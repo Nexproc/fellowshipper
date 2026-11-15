@@ -4,10 +4,17 @@ import {
   Lock,
   LogOut,
   ShieldCheck,
+  Trash2,
   Unlock,
+  UserPlus,
   X,
 } from 'lucide-react';
-import { evaluateMemberPermissions, type OwnershipContext } from '../domain/ownership';
+import { useState } from 'react';
+import {
+  evaluateMemberPermissions,
+  evaluatePartyPermissions,
+  type OwnershipContext,
+} from '../domain/ownership';
 import type { MemberProfile } from '../domain/types';
 import type { AuthController } from '../services/authService';
 
@@ -15,10 +22,16 @@ interface AuthAccountModalProps {
   open: boolean;
   onClose: () => void;
   auth: AuthController;
+  partyName: string;
   members: readonly MemberProfile[];
   ownershipCtx: OwnershipContext;
+  onRenameParty: (nextName: string) => void;
+  onClaimPartyOwnership: () => void;
+  onPromoteCoOwner: (memberId: string) => void;
+  onRelinquishCoOwner: (uid: string) => void;
   onClaimMember: (memberId: string) => void;
   onReleaseMember: (memberId: string) => void;
+  onRemoveMember: (memberId: string) => void;
   onToggleAllowLeadLoot: (memberId: string) => void;
 }
 
@@ -26,19 +39,44 @@ export function AuthAccountModal({
   open,
   onClose,
   auth,
+  partyName,
   members,
   ownershipCtx,
+  onRenameParty,
+  onClaimPartyOwnership,
+  onPromoteCoOwner,
+  onRelinquishCoOwner,
   onClaimMember,
   onReleaseMember,
+  onRemoveMember,
   onToggleAllowLeadLoot,
 }: AuthAccountModalProps) {
+  const [nameDraft, setNameDraft] = useState(partyName);
+
   if (!open) return null;
+
+  const partyPerms = evaluatePartyPermissions(ownershipCtx);
+  const ownerUids = partyPerms.ownerUids;
+
+  const ownerLabels = ownerUids.map((uid) => {
+    const matchedMember = members.find((m) => m.ownerUid === uid);
+    if (matchedMember) {
+      return `${matchedMember.displayName}${
+        matchedMember.ownerDisplayName &&
+        matchedMember.ownerDisplayName !== matchedMember.displayName
+          ? ` (${matchedMember.ownerDisplayName})`
+          : ''
+      }`;
+    }
+    if (auth.user?.uid === uid) return auth.user.displayName;
+    return `Owner (${uid.slice(0, 8)})`;
+  });
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Party Account and Character Ownership"
+      aria-label="Party Ownership and Account Settings"
       style={{
         position: 'fixed',
         inset: 0,
@@ -56,7 +94,7 @@ export function AuthAccountModal({
         className="panel"
         style={{
           width: '100%',
-          maxWidth: 520,
+          maxWidth: 560,
           maxHeight: '88vh',
           overflowY: 'auto',
           boxShadow: '0 24px 60px rgba(0, 0, 0, 0.55)',
@@ -67,9 +105,9 @@ export function AuthAccountModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <ShieldCheck size={18} style={{ color: 'var(--amber-400)' }} />
             <div>
-              <h2 className="panel-title">Party Login &amp; Character Ownership</h2>
+              <h2 className="panel-title">Party Ownership &amp; Account</h2>
               <p className="panel-subtitle">
-                Sign in to claim your party slot and sync routes &amp; BIS gear
+                Manage authenticated party owners, roster slots, and loot permissions
               </p>
             </div>
           </div>
@@ -145,14 +183,35 @@ export function AuthAccountModal({
                     </div>
                   )}
                   <div>
-                    <div style={{ fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        display: 'flex',
+                        gap: 6,
+                        alignItems: 'center',
+                      }}
+                    >
                       {auth.user.displayName}
                       <span className="lead-tag" style={{ textTransform: 'uppercase' }}>
                         {auth.user.provider}
                       </span>
+                      {partyPerms.isPartyOwner && (
+                        <span
+                          className="lead-tag"
+                          style={{
+                            background: 'rgba(16, 185, 129, 0.16)',
+                            color: 'var(--jade-400)',
+                          }}
+                        >
+                          Party Owner
+                        </span>
+                      )}
                     </div>
                     {auth.user.email && (
-                      <div className="mono" style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+                      <div
+                        className="mono"
+                        style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}
+                      >
                         {auth.user.email}
                       </div>
                     )}
@@ -181,8 +240,8 @@ export function AuthAccountModal({
                 }}
               >
                 <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
-                  Sign in with Discord{auth.isGoogleAuthEnabled ? ' or Google' : ''} to claim your
-                  party slot and manage your characters &amp; BIS gear sets.
+                  Sign in with Discord{auth.isGoogleAuthEnabled ? ' or Google' : ''} to
+                  create or claim a party room and bind your character slot.
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button
@@ -214,6 +273,91 @@ export function AuthAccountModal({
             )
           ) : null}
 
+          {/* Party Ownership Summary & Rename */}
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-canvas)',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                Party Ownership (Min 1 Owner Required)
+              </div>
+              <span className="mono" style={{ fontSize: '0.73rem', color: 'var(--jade-400)' }}>
+                {ownerUids.length} {ownerUids.length === 1 ? 'owner' : 'owners'}
+              </span>
+            </div>
+
+            {partyPerms.canManageParty && members.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="text-input"
+                  style={{ flex: 1 }}
+                  aria-label="Party Display Name"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  placeholder="Party Name"
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    if (nameDraft.trim()) onRenameParty(nameDraft.trim());
+                  }}
+                >
+                  Save Name
+                </button>
+              </div>
+            )}
+
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              {ownerLabels.length > 0 ? (
+                <>
+                  Owned by <strong>{ownerLabels.join(', ')}</strong>. At least one owner
+                  must remain bound to the party at all times.
+                </>
+              ) : members.length === 0 ? (
+                'Create the party on the main screen to become its initial Party Owner.'
+              ) : (
+                'This legacy room does not yet have an owner assigned.'
+              )}
+            </div>
+
+            {partyPerms.canClaimUnownedParty && members.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={onClaimPartyOwnership}
+                >
+                  <ShieldCheck size={13} /> Claim Party Ownership
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Roster Slot Ownership Table */}
           <div>
             <div
@@ -226,94 +370,181 @@ export function AuthAccountModal({
                 marginBottom: 8,
               }}
             >
-              4-Player Roster Slot Bindings
+              Roster Slot Bindings ({members.length})
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {members.map((m) => {
-                const perms = evaluateMemberPermissions(m, ownershipCtx);
-                return (
-                  <div
-                    key={m.id}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--bg-canvas)',
-                      border: '1px solid var(--border-subtle)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 10,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {m.ownerUid ? (
-                          <Lock size={13} style={{ color: 'var(--jade-400)' }} />
-                        ) : (
-                          <Unlock size={13} style={{ color: 'var(--text-muted)' }} />
-                        )}
-                        {m.displayName}
-                        {perms.isOwnedByCurrentUser && auth.isFirebaseConfigured && (
-                          <span className="lead-tag">Yours</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                        {m.ownerUid
-                          ? `Bound to ${m.ownerDisplayName ?? 'Player'}${
-                              m.ownerProvider ? ` via ${m.ownerProvider}` : ''
-                            }`
-                          : 'Unclaimed — any signed-in party member can claim'}
-                      </div>
-                    </div>
+            {members.length === 0 ? (
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-canvas)',
+                  border: '1px solid var(--border-subtle)',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                No roster members yet. Create the party from the roster banner to add
+                your character.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {members.map((m) => {
+                  const perms = evaluateMemberPermissions(m, ownershipCtx);
+                  const canMakeCoOwner =
+                    partyPerms.canAddCoOwner &&
+                    Boolean(m.ownerUid) &&
+                    !perms.isPartyOwnerSlot;
+                  const canStepDownOwner =
+                    perms.isOwnedByCurrentUser &&
+                    perms.isPartyOwnerSlot &&
+                    partyPerms.canRelinquishOwnership &&
+                    Boolean(m.ownerUid);
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {perms.isOwnedByCurrentUser && auth.isFirebaseConfigured && (
-                        <label
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--bg-canvas)',
+                        border: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 10,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <div
                           style={{
+                            fontWeight: 700,
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 5,
-                            fontSize: '0.74rem',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
+                            gap: 6,
+                            flexWrap: 'wrap',
                           }}
-                          title="Allow whoever is Route Lead to check off BIS drops for you during a dungeon run"
                         >
-                          <input
-                            type="checkbox"
-                            checked={m.allowPartyLeadLootCheck ?? true}
-                            onChange={() => onToggleAllowLeadLoot(m.id)}
-                          />
-                          Lead loot check
-                        </label>
-                      )}
+                          {m.ownerUid ? (
+                            <Lock size={13} style={{ color: 'var(--jade-400)' }} />
+                          ) : (
+                            <Unlock size={13} style={{ color: 'var(--text-muted)' }} />
+                          )}
+                          {m.displayName}
+                          {perms.isOwnedByCurrentUser && auth.isFirebaseConfigured && (
+                            <span className="lead-tag">Yours</span>
+                          )}
+                          {perms.isPartyOwnerSlot && (
+                            <span
+                              className="lead-tag"
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.16)',
+                                color: 'var(--jade-400)',
+                              }}
+                            >
+                              Owner
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                          {m.ownerUid
+                            ? `Bound to ${m.ownerDisplayName ?? 'Player'}${
+                                m.ownerProvider ? ` via ${m.ownerProvider}` : ''
+                              }`
+                            : 'Unclaimed — any signed-in party member can claim'}
+                        </div>
+                      </div>
 
-                      {auth.isFirebaseConfigured && auth.user && !m.ownerUid && (
-                        <button
-                          type="button"
-                          id={`btn-claim-${m.id}`}
-                          className="btn btn-primary btn-sm"
-                          onClick={() => onClaimMember(m.id)}
-                        >
-                          <CheckCircle2 size={13} /> Claim {m.displayName}
-                        </button>
-                      )}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        {perms.isOwnedByCurrentUser && auth.isFirebaseConfigured && (
+                          <label
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              fontSize: '0.74rem',
+                              color: 'var(--text-secondary)',
+                              cursor: 'pointer',
+                            }}
+                            title="Allow whoever is Route Lead to check off BIS drops for you during a dungeon run"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={m.allowPartyLeadLootCheck ?? true}
+                              onChange={() => onToggleAllowLeadLoot(m.id)}
+                            />
+                            Lead loot check
+                          </label>
+                        )}
 
-                      {auth.isFirebaseConfigured && perms.canReleaseClaim && m.ownerUid && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => onReleaseMember(m.id)}
-                        >
-                          Unbind
-                        </button>
-                      )}
+                        {canMakeCoOwner && (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            title="Grant Party Co-Owner permissions to this member"
+                            onClick={() => onPromoteCoOwner(m.id)}
+                          >
+                            <UserPlus size={12} /> Co-Owner
+                          </button>
+                        )}
+
+                        {canStepDownOwner && m.ownerUid && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            title="Step down as Party Co-Owner (another owner remains)"
+                            onClick={() => onRelinquishCoOwner(m.ownerUid!)}
+                          >
+                            Step Down
+                          </button>
+                        )}
+
+                        {auth.isFirebaseConfigured && auth.user && !m.ownerUid && (
+                          <button
+                            type="button"
+                            id={`btn-claim-${m.id}`}
+                            className="btn btn-primary btn-sm"
+                            onClick={() => onClaimMember(m.id)}
+                          >
+                            <CheckCircle2 size={13} /> Claim
+                          </button>
+                        )}
+
+                        {auth.isFirebaseConfigured &&
+                          perms.canReleaseClaim &&
+                          m.ownerUid && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => onReleaseMember(m.id)}
+                            >
+                              Unbind
+                            </button>
+                          )}
+
+                        {perms.canRemoveSlot && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            title="Remove roster slot from party"
+                            onClick={() => onRemoveMember(m.id)}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

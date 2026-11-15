@@ -28,10 +28,10 @@ export function EternalScoreView({
       <div className="panel-header">
         <div>
           <h2 className="panel-title">
-            10,000 Eternal Score &amp; Spider Mount Tracker
+            10,000 Eternal Score Progression Tracker
           </h2>
           <p className="panel-subtitle">
-            Imported from your Spider Mount List sheet (`ETERNAL_SCORE = 615 + 15 × (lvl - 1)`).
+            Track your party&apos;s timed Season 2 Eternal keys (`ETERNAL_SCORE = 615 + 15 × (lvl - 1)`).
           </p>
         </div>
 

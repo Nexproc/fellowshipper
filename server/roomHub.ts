@@ -69,8 +69,12 @@ export class PartyRoomHub {
       try {
         const parsed = JSON.parse(fs.readFileSync(diskPath, 'utf-8')) as PartySyncState;
         if (parsed && parsed.roomId && Array.isArray(parsed.members)) {
-          this.rooms.set(roomId, parsed);
-          return parsed;
+          const normalized: PartySyncState = {
+            ...parsed,
+            ownerUids: Array.isArray(parsed.ownerUids) ? parsed.ownerUids : [],
+          };
+          this.rooms.set(roomId, normalized);
+          return normalized;
         }
       } catch {
         // Ignore corrupted snapshot and recreate default

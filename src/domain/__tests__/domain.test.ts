@@ -295,6 +295,180 @@ describe('GCP Firebase Account Ownership & Per-Character Permissions', () => {
       )
     ).toBe(sampleR5);
   });
+
+  it('starts uncreated rooms clean with zero pre-populated players and enforces >= 1 Party Owner once created', async () => {
+    const { createDefaultPartyState, createOwnedPartyState } = await import('../catalog');
+    const {
+      claimUnownedPartyState,
+      evaluateMemberPermissions,
+      evaluatePartyPermissions,
+      promotePartyOwner,
+      releaseMemberSlot,
+      removePartyOwner,
+    } = await import('../ownership');
+
+    // Uncreated default room has no fake Nick/Andy/Ting/Duncan roster and 0 Eternal score
+    const blank = createDefaultPartyState('friday-keys');
+    expect(blank.partyName).toBe('Friday Keys');
+    expect(blank.members).toEqual([]);
+    expect(blank.ownerUids).toEqual([]);
+    expect(blank.eternalChecklist).toHaveLength(11);
+    expect(blank.eternalChecklist.every((r) => r.currentScore === 0 && !r.finished)).toBe(
+      true
+    );
+
+    const creator = {
+      uid: 'discord-uid-creator',
+      displayName: 'Alex',
+      email: null,
+      photoUrl: null,
+      provider: 'discord' as const,
+    };
+    const friend = {
+      uid: 'discord-uid-friend',
+      displayName: 'Sam',
+      email: null,
+      photoUrl: null,
+      provider: 'discord' as const,
+    };
+
+    // Creating a party binds creator as initial Party Owner + claimed Main slot with empty BIS
+    const owned = createOwnedPartyState({
+      roomId: 'friday-keys',
+      partyName: 'Friday Push',
+      owner: creator,
+      memberDisplayName: 'Alex',
+      heroId: 'helena',
+    });
+    expect(owned.ownerUids).toEqual(['discord-uid-creator']);
+    expect(owned.members).toHaveLength(1);
+    expect(owned.members[0].ownerUid).toBe('discord-uid-creator');
+    expect(owned.members[0].characters[0].bisSets[0].items).toEqual([]);
+
+    // Sole Party Owner cannot step down, unbind, or delete their own slot
+    expect(
+      removePartyOwner(owned.ownerUids, creator.uid, creator.uid)
+    ).toEqual(['discord-uid-creator']);
+    expect(
+      releaseMemberSlot(
+        owned.members[0],
+        creator.uid,
+        owned.ownerUids,
+        owned.members
+      ).ownerUid
+    ).toBe('discord-uid-creator');
+
+    const soleOwnerPerms = evaluateMemberPermissions(owned.members[0], {
+      authEnforced: true,
+      currentUser: creator,
+      leadMemberId: owned.leadMemberId,
+      members: owned.members,
+      partyOwnerUids: owned.ownerUids,
+    });
+    expect(soleOwnerPerms.isPartyOwnerSlot).toBe(true);
+    expect(soleOwnerPerms.canReleaseClaim).toBe(false);
+    expect(soleOwnerPerms.canRemoveSlot).toBe(false);
+
+    // Promoting a claimed teammate to Co-Owner allows the first owner to step down while keeping >= 1 owner
+    const friendMember = {
+      ...owned.members[0],
+      id: 'sam',
+      displayName: 'Sam',
+      ownerUid: friend.uid,
+      ownerDisplayName: friend.displayName,
+    };
+    const twoMembers = [...owned.members, friendMember];
+    const coOwners = promotePartyOwner(owned.ownerUids, friendMember, creator.uid);
+    expect(coOwners).toEqual(['discord-uid-creator', 'discord-uid-friend']);
+
+    const coOwnerPartyPerms = evaluatePartyPermissions({
+      authEnforced: true,
+      currentUser: creator,
+      leadMemberId: owned.leadMemberId,
+      members: twoMembers,
+      partyOwnerUids: coOwners,
+    });
+    expect(coOwnerPartyPerms.canRelinquishOwnership).toBe(true);
+
+    const afterStepDown = removePartyOwner(coOwners, creator.uid, creator.uid);
+    expect(afterStepDown).toEqual(['discord-uid-friend']);
+
+    // Legacy unowned room can be claimed cleanly
+    const legacyState = {
+      ...blank,
+      members: [{ ...owned.members[0], ownerUid: null, ownerDisplayName: null }],
+    };
+    const claimedLegacy = claimUnownedPartyState(legacyState, friend);
+    expect(claimedLegacy.ownerUids).toEqual(['discord-uid-friend']);
+    expect(claimedLegacy.members[0].ownerUid).toBe('discord-uid-friend');
+  });
+
+  it('validates Fellowship Item Database coverage across all 12 heroes, 16 dungeons, and smart Ring/Relic slot assignment', async () => {
+    const { HEROES } = await import('../catalog');
+    const {
+      FELLOWSHIP_ITEM_DATABASE,
+      queryItemDatabase,
+      resolveTargetGearSlot,
+    } = await import('../itemDatabase');
+
+    expect(FELLOWSHIP_ITEM_DATABASE.length).toBeGreaterThanOrEqual(150);
+
+    const ids = new Set<string>();
+    const validSlugs = new Set([
+      'any-dungeon',
+      ...DUNGEONS.map((d) => d.slug),
+    ]);
+
+    for (const item of FELLOWSHIP_ITEM_DATABASE) {
+      expect(ids.has(item.id)).toBe(false);
+      ids.add(item.id);
+      expect(validSlugs.has(item.dungeonSlug)).toBe(true);
+      expect(item.stats.length).toBeGreaterThan(3);
+    }
+
+    // Every one of the 12 heroes has at least 3 Legendaries and >= 2 Weapons in the catalog
+    for (const hero of HEROES) {
+      const heroLegendaries = queryItemDatabase({
+        heroId: hero.id,
+        categoryFilter: 'Legendary',
+      });
+      const heroWeapons = queryItemDatabase({
+        heroId: hero.id,
+        categoryFilter: 'Weapon',
+      });
+      expect(heroLegendaries.length).toBeGreaterThanOrEqual(3);
+      expect(heroWeapons.length).toBeGreaterThanOrEqual(2);
+    }
+
+    // Smart Ring 1 -> Ring 2 and Relic 1 -> Relic 2 slot resolution
+    expect(resolveTargetGearSlot('Ring', [])).toBe('Ring 1');
+    expect(
+      resolveTargetGearSlot('Ring', [
+        {
+          id: 'r1',
+          slot: 'Ring 1',
+          itemName: 'Barnacled Signet',
+          dungeonSlug: 'wraithtide-vault',
+          stats: 'Haste +147',
+          acquired: false,
+        },
+      ])
+    ).toBe('Ring 2');
+    expect(resolveTargetGearSlot('Relic', [])).toBe('Relic 1');
+    expect(
+      resolveTargetGearSlot('Relic', [
+        {
+          id: 'rel1',
+          slot: 'Relic 1',
+          itemName: 'Orb of Hidden Riches',
+          dungeonSlug: 'wraithtide-vault',
+          stats: 'Haste +200',
+          acquired: false,
+        },
+      ])
+    ).toBe('Relic 2');
+  });
 });
+
 
 

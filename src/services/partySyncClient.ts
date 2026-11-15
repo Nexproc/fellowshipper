@@ -7,6 +7,7 @@ import {
 } from 'firebase/database';
 import {
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   setDoc,
@@ -16,7 +17,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BUILT_IN_ROUTES,
   createDefaultPartyState,
+  createOwnedPartyState,
   DUNGEONS,
+  formatPartyNameFromRoomId,
 } from '../domain/catalog';
 import { parseCombatLogLine, reduceCombatEvent } from '../domain/combatLogParser';
 import { selectBestRoute } from '../domain/punchList';
@@ -24,6 +27,7 @@ import type {
   AuthUserInfo,
   BossVariant,
   EternalChecklistRow,
+  HeroId,
   LiveRunState,
   MapPing,
   MemberProfile,
@@ -39,6 +43,10 @@ export type SyncBackendKind = 'firebase' | 'websocket' | 'local';
 
 interface SharedRoomDoc {
   roomId: string;
+  partyName: string;
+  ownerUids: string[];
+  createdByUid: string | null;
+  createdByName: string | null;
   revision: number;
   leadMemberId: string;
   autoFollowLogLead: boolean;
@@ -74,6 +82,10 @@ function sanitizeRoutePulls(
 function extractSharedDoc(state: PartySyncState): SharedRoomDoc {
   return {
     roomId: state.roomId,
+    partyName: state.partyName ?? formatPartyNameFromRoomId(state.roomId),
+    ownerUids: Array.isArray(state.ownerUids) ? state.ownerUids : [],
+    createdByUid: state.createdByUid ?? null,
+    createdByName: state.createdByName ?? null,
     revision: state.revision,
     leadMemberId: state.leadMemberId,
     autoFollowLogLead: state.autoFollowLogLead,
@@ -93,38 +105,58 @@ function extractSharedDoc(state: PartySyncState): SharedRoomDoc {
   };
 }
 
+function isUnownedLegacySeedCache(parsed: Partial<PartySyncState>): boolean {
+  const owners = Array.isArray(parsed.ownerUids) ? parsed.ownerUids : [];
+  if (owners.length > 0) return false;
+  const members = Array.isArray(parsed.members) ? parsed.members : [];
+  const hasAnyClaimed = members.some((m) => Boolean(m.ownerUid));
+  if (hasAnyClaimed) return false;
+  const ids = members.map((m) => m.id).join(',');
+  return ids === 'nick,andy,ting,duncan';
+}
+
+function sortMembersByOrder(
+  members: readonly MemberProfile[],
+  order: readonly string[]
+): MemberProfile[] {
+  return [...members].sort((a, b) => {
+    const ia = order.indexOf(a.id);
+    const ib = order.indexOf(b.id);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+}
+
 function loadCachedState(roomId: string): PartySyncState {
   const seed = createDefaultPartyState(roomId);
   try {
-    const raw = localStorage.getItem(`fellowshipper:room:${roomId}`);
+    const storageKey = `fellowshipper:room:${roomId}`;
+    const raw = localStorage.getItem(storageKey);
     if (raw) {
-      const parsed = JSON.parse(raw) as PartySyncState;
+      const parsed = JSON.parse(raw) as Partial<PartySyncState>;
       if (parsed && parsed.roomId && Array.isArray(parsed.members)) {
-        const migrationKey = `fellowshipper:s2CleanMigrated:${roomId}`;
-        const alreadyMigrated = localStorage.getItem(migrationKey) === '1';
-        if (!alreadyMigrated) {
-          localStorage.setItem(migrationKey, '1');
-          const cachedDungeon = DUNGEONS.find(
-            (d) => d.slug === parsed.activeDungeonSlug
-          );
-          if (!cachedDungeon?.levelId) {
-            return {
-              ...parsed,
-              activeDungeonSlug: seed.activeDungeonSlug,
-              activeVariant: seed.activeVariant,
-              activeRouteId: seed.activeRouteId,
-              activeRouteR5: seed.activeRouteR5 ?? null,
-              activeRoutePulls: seed.activeRoutePulls ?? null,
-              activePullIndex: 1,
-            };
-          }
+        if (isUnownedLegacySeedCache(parsed)) {
+          localStorage.removeItem(storageKey);
+          return seed;
         }
+        const activeDungeonSlug =
+          parsed.activeDungeonSlug ?? seed.activeDungeonSlug;
+        const cachedDungeon = DUNGEONS.find((d) => d.slug === activeDungeonSlug);
         return {
+          ...seed,
           ...parsed,
+          roomId,
+          partyName: parsed.partyName ?? formatPartyNameFromRoomId(roomId),
+          ownerUids: Array.isArray(parsed.ownerUids) ? parsed.ownerUids : [],
+          createdByUid: parsed.createdByUid ?? null,
+          createdByName: parsed.createdByName ?? null,
+          activeDungeonSlug: cachedDungeon?.levelId
+            ? activeDungeonSlug
+            : seed.activeDungeonSlug,
           activeRoutePulls: sanitizeRoutePulls(
-            parsed.activeDungeonSlug,
+            cachedDungeon?.levelId ? activeDungeonSlug : seed.activeDungeonSlug,
             parsed.activeRoutePulls
           ),
+          members: parsed.members,
         };
       }
     }
@@ -136,9 +168,20 @@ function loadCachedState(roomId: string): PartySyncState {
 
 function saveCachedState(state: PartySyncState): void {
   try {
-    localStorage.setItem(`fellowshipper:room:${state.roomId}`, JSON.stringify(state));
+    localStorage.setItem(
+      `fellowshipper:room:${state.roomId}`,
+      JSON.stringify(state)
+    );
   } catch {
     // Ignore quota failure
+  }
+}
+
+function clearCachedState(roomId: string): void {
+  try {
+    localStorage.removeItem(`fellowshipper:room:${roomId}`);
+  } catch {
+    // Ignore storage failure
   }
 }
 
@@ -154,6 +197,12 @@ function getOrCreateClientId(): string {
   }
 }
 
+export interface CreatePartyRoomInput {
+  partyName: string;
+  displayName: string;
+  heroId: HeroId;
+}
+
 export function usePartyRoom(
   roomId: string,
   myMemberId: string,
@@ -166,6 +215,9 @@ export function usePartyRoom(
   const [syncBackend, setSyncBackend] = useState<SyncBackendKind>(
     services ? 'firebase' : 'local'
   );
+  const [roomExistsInCloud, setRoomExistsInCloud] = useState<boolean | null>(
+    services ? null : true
+  );
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isWatchingLogs, setIsWatchingLogs] = useState(false);
 
@@ -175,12 +227,19 @@ export function usePartyRoom(
   const memberIdRef = useRef<string>(myMemberId);
   const authUserRef = useRef<AuthUserInfo | null>(authUser);
   const clientIdRef = useRef<string>(getOrCreateClientId());
-  const seededRoomRef = useRef<string | null>(null);
+  const roomExistsRef = useRef<boolean | null>(services ? null : true);
+  const memberOrderRef = useRef<string[]>([]);
 
   if (state.roomId !== roomId) {
     const cached = loadCachedState(roomId);
     setState(cached);
+    setRoomExistsInCloud(services ? null : true);
   }
+
+  useEffect(() => {
+    roomExistsRef.current = services ? null : true;
+    memberOrderRef.current = stateRef.current.members.map((m) => m.id);
+  }, [roomId, services]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -212,33 +271,28 @@ export function usePartyRoom(
         setSyncError(null);
 
         if (!snap.exists()) {
-          // Bootstrap new cloud room once an authenticated party member opens it
-          if (authUser && seededRoomRef.current !== roomId) {
-            seededRoomRef.current = roomId;
-            const initial = createDefaultPartyState(roomId);
-            const batch = writeBatch(firestore);
-            batch.set(roomDocRef, stripUndefined(extractSharedDoc(initial)));
-            for (const member of initial.members) {
-              batch.set(
-                doc(firestore, 'rooms', roomId, 'members', member.id),
-                stripUndefined(member)
-              );
-            }
-            void batch.commit().catch((err: Error) => {
-              setSyncError(err.message);
-            });
-          }
+          roomExistsRef.current = false;
+          memberOrderRef.current = [];
+          setRoomExistsInCloud(false);
+          const clean = createDefaultPartyState(roomId);
+          clearCachedState(roomId);
+          stateRef.current = clean;
+          setState(clean);
           return;
         }
 
+        roomExistsRef.current = true;
+        setRoomExistsInCloud(true);
+
         const data = snap.data() as Partial<SharedRoomDoc>;
+        const order = Array.isArray(data.memberOrder) ? data.memberOrder : [];
+        memberOrderRef.current = order;
+
         setState((prev) => {
-          const order = data.memberOrder ?? prev.members.map((m) => m.id);
-          const sortedMembers = [...prev.members].sort((a, b) => {
-            const ia = order.indexOf(a.id);
-            const ib = order.indexOf(b.id);
-            return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-          });
+          const sortedMembers = sortMembersByOrder(
+            prev.members,
+            order.length > 0 ? order : prev.members.map((m) => m.id)
+          );
 
           const nextDungeonSlug =
             data.activeDungeonSlug ?? prev.activeDungeonSlug;
@@ -250,6 +304,19 @@ export function usePartyRoom(
           const merged: PartySyncState = {
             ...prev,
             roomId,
+            partyName:
+              data.partyName ??
+              prev.partyName ??
+              formatPartyNameFromRoomId(roomId),
+            ownerUids: Array.isArray(data.ownerUids) ? data.ownerUids : [],
+            createdByUid:
+              data.createdByUid !== undefined
+                ? data.createdByUid
+                : (prev.createdByUid ?? null),
+            createdByName:
+              data.createdByName !== undefined
+                ? data.createdByName
+                : (prev.createdByName ?? null),
             revision: data.revision ?? prev.revision,
             leadMemberId: data.leadMemberId ?? prev.leadMemberId,
             autoFollowLogLead: data.autoFollowLogLead ?? prev.autoFollowLogLead,
@@ -283,25 +350,27 @@ export function usePartyRoom(
     const unsubMembers = onSnapshot(
       membersColRef,
       (snap) => {
-        if (disposed || snap.empty) return;
-        const remoteMap = new Map<string, MemberProfile>();
+        if (disposed) return;
+        if (roomExistsRef.current === false && snap.empty) return;
+
+        const remoteMembers: MemberProfile[] = [];
         for (const d of snap.docs) {
           const member = d.data() as MemberProfile;
           if (member && member.id) {
-            remoteMap.set(member.id, member);
+            remoteMembers.push(member);
           }
         }
 
         setState((prev) => {
-          const existingIds = new Set(prev.members.map((m) => m.id));
-          const updated = prev.members.map((m) => remoteMap.get(m.id) ?? m);
-          for (const [id, m] of remoteMap.entries()) {
-            if (!existingIds.has(id)) {
-              updated.push(m);
-            }
+          const order =
+            memberOrderRef.current.length > 0
+              ? memberOrderRef.current
+              : prev.members.map((m) => m.id);
+          const sorted = sortMembersByOrder(remoteMembers, order);
+          const next: PartySyncState = { ...prev, members: sorted };
+          if (roomExistsRef.current) {
+            saveCachedState(next);
           }
-          const next: PartySyncState = { ...prev, members: updated };
-          saveCachedState(next);
           return next;
         });
       },
@@ -382,7 +451,7 @@ export function usePartyRoom(
       const myMember = stateRef.current.members.find((m) => m.id === myMemberId);
       const entry: OnlinePresence = {
         clientId: clientIdRef.current,
-        memberId: myMemberId,
+        memberId: myMemberId || authUser.uid,
         displayName: myMember?.displayName ?? authUser.displayName,
         isWatchingLogs,
         lastHeartbeatMs: Date.now(),
@@ -424,7 +493,7 @@ export function usePartyRoom(
     const connectWs = () => {
       if (disposed) return;
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const activeId = memberIdRef.current;
+      const activeId = memberIdRef.current || 'player';
       const myMember = stateRef.current.members.find((m) => m.id === activeId);
       const displayName = myMember?.displayName ?? activeId;
       const wsUrl = `${proto}//${window.location.host}/ws/party?room=${encodeURIComponent(
@@ -455,8 +524,14 @@ export function usePartyRoom(
               | { type: 'PRESENCE_LIST'; online: OnlinePresence[] };
 
             if (msg.type === 'ROOM_SNAPSHOT') {
-              setState(msg.state);
-              saveCachedState(msg.state);
+              const incoming: PartySyncState = {
+                ...msg.state,
+                ownerUids: Array.isArray(msg.state.ownerUids)
+                  ? msg.state.ownerUids
+                  : [],
+              };
+              setState(incoming);
+              saveCachedState(incoming);
               setOnline(msg.online);
             } else if (msg.type === 'PRESENCE_LIST') {
               setOnline(msg.online);
@@ -507,12 +582,76 @@ export function usePartyRoom(
     ws.send(
       JSON.stringify({
         type: 'PRESENCE_UPDATE',
-        memberId: myMemberId,
-        displayName: myMember?.displayName ?? myMemberId,
+        memberId: myMemberId || 'player',
+        displayName: myMember?.displayName ?? (myMemberId || 'Player'),
         isWatchingLogs,
       })
     );
   }, [services, myMemberId, isWatchingLogs]);
+
+  const createPartyRoom = useCallback(
+    (input: CreatePartyRoomInput): string | null => {
+      if (services) {
+        const currentUser = authUserRef.current;
+        if (!currentUser) {
+          setSyncError('Sign in with Discord or Google first so your party has an authenticated owner.');
+          return null;
+        }
+        const owned = createOwnedPartyState({
+          roomId,
+          partyName: input.partyName,
+          owner: currentUser,
+          memberDisplayName: input.displayName,
+          heroId: input.heroId,
+        });
+
+        roomExistsRef.current = true;
+        memberOrderRef.current = owned.members.map((m) => m.id);
+        setRoomExistsInCloud(true);
+        stateRef.current = owned;
+        setState(owned);
+        saveCachedState(owned);
+
+        const batch = writeBatch(services.firestore);
+        batch.set(
+          doc(services.firestore, 'rooms', roomId),
+          stripUndefined(extractSharedDoc(owned))
+        );
+        for (const member of owned.members) {
+          batch.set(
+            doc(services.firestore, 'rooms', roomId, 'members', member.id),
+            stripUndefined(member)
+          );
+        }
+        void batch.commit().catch((err: Error) => setSyncError(err.message));
+        return owned.members[0]?.id ?? null;
+      }
+
+      const localOwner = {
+        uid: authUserRef.current?.uid ?? 'local-owner',
+        displayName: input.displayName.trim() || 'Party Owner',
+        provider: 'oidc' as const,
+        photoUrl: null,
+      };
+      const owned = createOwnedPartyState({
+        roomId,
+        partyName: input.partyName,
+        owner: localOwner,
+        memberDisplayName: input.displayName,
+        heroId: input.heroId,
+      });
+      stateRef.current = owned;
+      setState(owned);
+      saveCachedState(owned);
+      bcRef.current?.postMessage({ type: 'LOCAL_SYNC', state: owned });
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'SYNC_STATE', state: owned }));
+      }
+      return owned.members[0]?.id ?? null;
+    },
+    [services, roomId]
+  );
 
   const commitState = useCallback(
     (updater: (prev: PartySyncState) => PartySyncState) => {
@@ -525,15 +664,29 @@ export function usePartyRoom(
         revision: prev.revision + 1,
       };
 
+      if (services) {
+        if (!authUserRef.current) {
+          setSyncError(
+            'Sign in with Discord or Google to save changes to your cloud party room.'
+          );
+          return;
+        }
+        if (next.ownerUids.length === 0) {
+          setSyncError(
+            'Every party must be owned by at least one member. Create or claim this party first.'
+          );
+          return;
+        }
+      }
+
       stateRef.current = next;
+      memberOrderRef.current = next.members.map((m) => m.id);
       setState(next);
       saveCachedState(next);
 
       if (services) {
-        if (!authUserRef.current) {
-          setSyncError('Sign in with Google or Discord to save changes to your cloud party room.');
-          return;
-        }
+        roomExistsRef.current = true;
+        setRoomExistsInCloud(true);
         const { firestore } = services;
         const prevShared = extractSharedDoc(prev);
         const nextShared = extractSharedDoc(next);
@@ -552,12 +705,22 @@ export function usePartyRoom(
         }
 
         const prevById = new Map(prev.members.map((m) => [m.id, m]));
+        const nextIds = new Set(next.members.map((m) => m.id));
+
         for (const member of next.members) {
           const oldMember = prevById.get(member.id);
           if (JSON.stringify(oldMember) !== JSON.stringify(member)) {
             void setDoc(
               doc(firestore, 'rooms', roomId, 'members', member.id),
               stripUndefined(member)
+            ).catch((err: Error) => setSyncError(err.message));
+          }
+        }
+
+        for (const oldMember of prev.members) {
+          if (!nextIds.has(oldMember.id)) {
+            void deleteDoc(
+              doc(firestore, 'rooms', roomId, 'members', oldMember.id)
             ).catch((err: Error) => setSyncError(err.message));
           }
         }
@@ -578,7 +741,7 @@ export function usePartyRoom(
       const myMember = stateRef.current.members.find((m) => m.id === myMemberId);
       const ping: MapPing = {
         id: `ping-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        authorName: myMember?.displayName ?? 'Party',
+        authorName: myMember?.displayName ?? authUserRef.current?.displayName ?? 'Party',
         x,
         y,
         label,
@@ -682,7 +845,7 @@ export function usePartyRoom(
             stripUndefined(liveRun)
           ).catch(() => {});
         }
-        if (routeTriggered && authUserRef.current) {
+        if (routeTriggered && authUserRef.current && next.ownerUids.length >= 1) {
           void setDoc(
             doc(services.firestore, 'rooms', roomId),
             stripUndefined(extractSharedDoc(next)),
@@ -697,73 +860,6 @@ export function usePartyRoom(
     [services, roomId]
   );
 
-  const resetRoomToSeed = useCallback(() => {
-    const fresh = createDefaultPartyState(roomId);
-
-    if (services) {
-      const uid = authUserRef.current?.uid;
-      if (!uid) return;
-      const prevById = new Map(stateRef.current.members.map((m) => [m.id, m]));
-      const mergedMembers = fresh.members.map((seedMember) => {
-        const existing = prevById.get(seedMember.id);
-        if (!existing) return seedMember;
-        // Preserve ownership claims; if owned by someone else, leave their doc untouched
-        if (existing.ownerUid && existing.ownerUid !== uid) {
-          return existing;
-        }
-        return {
-          ...seedMember,
-          ownerUid: existing.ownerUid ?? null,
-          ownerDisplayName: existing.ownerDisplayName ?? null,
-          ownerProvider: existing.ownerProvider ?? null,
-          ownerPhotoUrl: existing.ownerPhotoUrl ?? null,
-          allowPartyLeadLootCheck: existing.allowPartyLeadLootCheck ?? true,
-        };
-      });
-
-      const next: PartySyncState = {
-        ...fresh,
-        members: mergedMembers,
-      };
-      stateRef.current = next;
-      setState(next);
-      saveCachedState(next);
-
-      const batch = writeBatch(services.firestore);
-      batch.set(
-        doc(services.firestore, 'rooms', roomId),
-        stripUndefined(extractSharedDoc(next))
-      );
-      for (const m of mergedMembers) {
-        const existing = prevById.get(m.id);
-        if (!existing?.ownerUid || existing.ownerUid === uid) {
-          batch.set(
-            doc(services.firestore, 'rooms', roomId, 'members', m.id),
-            stripUndefined(m)
-          );
-        }
-      }
-      void batch.commit().catch((err: Error) => setSyncError(err.message));
-      if (services.rtdb) {
-        void rtdbSet(
-          rtdbRef(services.rtdb, `rooms/${roomId}/liveRun`),
-          stripUndefined(fresh.liveRun)
-        ).catch(() => {});
-      }
-      return;
-    }
-
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'RESET_DEFAULT' }));
-      return;
-    }
-    stateRef.current = fresh;
-    setState(fresh);
-    saveCachedState(fresh);
-    bcRef.current?.postMessage({ type: 'LOCAL_SYNC', state: fresh });
-  }, [services, roomId]);
-
   const effectiveStatus: SyncConnectionStatus =
     services && !authUser ? 'local-only' : status;
   const effectiveOnline: OnlinePresence[] =
@@ -774,13 +870,14 @@ export function usePartyRoom(
     online: effectiveOnline,
     status: effectiveStatus,
     syncBackend,
+    roomExistsInCloud,
     syncError,
     clearSyncError: () => setSyncError(null),
     isWatchingLogs,
     setIsWatchingLogs,
+    createPartyRoom,
     commitState,
     sendPing,
     ingestCombatLines,
-    resetRoomToSeed,
   };
 }

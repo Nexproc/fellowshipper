@@ -223,6 +223,15 @@ export interface OnlinePresence {
 
 export interface PartySyncState {
   roomId: string;
+  /** Human-readable name for the party */
+  partyName?: string;
+  /**
+   * Authenticated user UIDs (or local owner IDs in offline mode) that own this party.
+   * Every initialized party must have at least one owner (`ownerUids.length >= 1`).
+   */
+  ownerUids: string[];
+  createdByUid?: string | null;
+  createdByName?: string | null;
   revision: number;
   leadMemberId: string;
   autoFollowLogLead: boolean;
@@ -241,3 +250,4 @@ export interface PartySyncState {
   eternalChecklist: EternalChecklistRow[];
   liveRun: LiveRunState;
 }
+

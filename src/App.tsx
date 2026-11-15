@@ -4,8 +4,8 @@ import {
   Copy,
   KeyRound,
   ListChecks,
-  RotateCcw,
   Shield,
+  ShieldCheck,
   Trophy,
   UserCheck,
 } from 'lucide-react';
@@ -17,11 +17,19 @@ import type { PlannerSyncPayload } from './components/MethodRouteEmbed';
 import { PartyRosterBar } from './components/PartyRosterBar';
 import { PunchListSplash } from './components/PunchListSplash';
 import { RoutePlannerView } from './components/RoutePlannerView';
-import { BUILT_IN_ROUTES, DUNGEONS } from './domain/catalog';
+import {
+  BUILT_IN_ROUTES,
+  DUNGEONS,
+  formatPartyNameFromRoomId,
+} from './domain/catalog';
 import {
   claimMemberSlot,
+  claimUnownedPartyState,
   evaluateMemberPermissions,
+  evaluatePartyPermissions,
+  promotePartyOwner,
   releaseMemberSlot,
+  removePartyOwner,
   resolveMemberIdForUser,
   type OwnershipContext,
 } from './domain/ownership';
@@ -50,9 +58,9 @@ function readInitialRoom(): string {
 
 function readInitialIdentity(): string {
   try {
-    return localStorage.getItem('fellowshipper:identity') || 'nick';
+    return localStorage.getItem('fellowshipper:identity') || '';
   } catch {
-    return 'nick';
+    return '';
   }
 }
 
@@ -73,10 +81,10 @@ export function App() {
     syncError,
     clearSyncError,
     setIsWatchingLogs,
+    createPartyRoom,
     commitState,
     sendPing,
     ingestCombatLines,
-    resetRoomToSeed,
   } = usePartyRoom(roomId, manualMemberId, auth.user);
 
   const ownedMemberId = useMemo(
@@ -84,7 +92,11 @@ export function App() {
     [state.members, auth.user?.uid]
   );
 
-  const myMemberId = ownedMemberId ?? manualMemberId;
+  const myMemberId =
+    ownedMemberId ??
+    (state.members.some((m) => m.id === manualMemberId)
+      ? manualMemberId
+      : (state.members[0]?.id ?? ''));
 
   const ownershipCtx: OwnershipContext = useMemo(
     () => ({
@@ -92,13 +104,26 @@ export function App() {
       currentUser: auth.user,
       leadMemberId: state.leadMemberId,
       members: state.members,
+      partyOwnerUids: state.ownerUids,
     }),
-    [auth.isFirebaseConfigured, auth.user, state.leadMemberId, state.members]
+    [
+      auth.isFirebaseConfigured,
+      auth.user,
+      state.leadMemberId,
+      state.members,
+      state.ownerUids,
+    ]
+  );
+
+  const partyPerms = useMemo(
+    () => evaluatePartyPermissions(ownershipCtx),
+    [ownershipCtx]
   );
 
   const watcher = useCombatLogWatcher(ingestCombatLines, setIsWatchingLogs);
 
   useEffect(() => {
+    if (!myMemberId) return;
     try {
       localStorage.setItem('fellowshipper:identity', myMemberId);
     } catch {
@@ -136,7 +161,13 @@ export function App() {
     const byId = availableRoutes.find((r) => r.id === state.activeRouteId);
     if (byId) return byId;
     return selectBestRoute(allRoutes, activeDungeon.slug, state.activeVariant);
-  }, [availableRoutes, allRoutes, activeDungeon.slug, state.activeRouteId, state.activeVariant]);
+  }, [
+    availableRoutes,
+    allRoutes,
+    activeDungeon.slug,
+    state.activeRouteId,
+    state.activeVariant,
+  ]);
 
   const handleCopyInvite = () => {
     const url = new URL(window.location.href);
@@ -146,6 +177,68 @@ export function App() {
     window.setTimeout(() => setCopiedInvite(false), 1800);
   };
 
+  const handleCreateParty = (input: {
+    partyName: string;
+    displayName: string;
+    heroId: HeroId;
+  }) => {
+    const createdMemberId = createPartyRoom(input);
+    if (createdMemberId) {
+      setManualMemberId(createdMemberId);
+    }
+  };
+
+  const handleClaimPartyOwnership = () => {
+    const user = auth.isFirebaseConfigured
+      ? auth.user
+      : {
+          uid: 'local-owner',
+          displayName: state.members[0]?.displayName ?? 'Party Owner',
+          email: null,
+          photoUrl: null,
+          provider: 'oidc' as const,
+        };
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+    commitState((prev) => claimUnownedPartyState(prev, user));
+  };
+
+  const handleRenameParty = (nextName: string) => {
+    if (!partyPerms.canManageParty) return;
+    commitState((prev) => ({
+      ...prev,
+      partyName: nextName.trim() || formatPartyNameFromRoomId(prev.roomId),
+    }));
+  };
+
+  const handlePromoteCoOwner = (memberId: string) => {
+    const actorUid = auth.isFirebaseConfigured
+      ? auth.user?.uid
+      : (state.ownerUids[0] ?? 'local-owner');
+    if (!actorUid) return;
+    commitState((prev) => {
+      const target = prev.members.find((m) => m.id === memberId);
+      if (!target) return prev;
+      return {
+        ...prev,
+        ownerUids: promotePartyOwner(prev.ownerUids, target, actorUid),
+      };
+    });
+  };
+
+  const handleRelinquishCoOwner = (targetUid: string) => {
+    const actorUid = auth.isFirebaseConfigured
+      ? auth.user?.uid
+      : (state.ownerUids[0] ?? 'local-owner');
+    if (!actorUid) return;
+    commitState((prev) => ({
+      ...prev,
+      ownerUids: removePartyOwner(prev.ownerUids, targetUid, actorUid),
+    }));
+  };
+
   const handleClaimMember = (memberId: string) => {
     const user = auth.user;
     if (!user) {
@@ -153,12 +246,18 @@ export function App() {
       return;
     }
     setManualMemberId(memberId);
-    commitState((prev) => ({
-      ...prev,
-      members: prev.members.map((m) =>
+    commitState((prev) => {
+      const updatedMembers = prev.members.map((m) =>
         m.id === memberId ? claimMemberSlot(m, user) : m
-      ),
-    }));
+      );
+      const nextOwners =
+        prev.ownerUids.length === 0 ? [user.uid] : prev.ownerUids;
+      return {
+        ...prev,
+        ownerUids: nextOwners,
+        members: updatedMembers,
+      };
+    });
   };
 
   const handleReleaseMember = (memberId: string) => {
@@ -167,9 +266,31 @@ export function App() {
     commitState((prev) => ({
       ...prev,
       members: prev.members.map((m) =>
-        m.id === memberId ? releaseMemberSlot(m, uid) : m
+        m.id === memberId
+          ? releaseMemberSlot(m, uid, prev.ownerUids, prev.members)
+          : m
       ),
     }));
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    const target = state.members.find((m) => m.id === memberId);
+    if (!target) return;
+    const perms = evaluateMemberPermissions(target, ownershipCtx);
+    if (!perms.canRemoveSlot) return;
+
+    commitState((prev) => {
+      const remaining = prev.members.filter((m) => m.id !== memberId);
+      const nextLead =
+        prev.leadMemberId === memberId
+          ? (remaining[0]?.id ?? '')
+          : prev.leadMemberId;
+      return {
+        ...prev,
+        leadMemberId: nextLead,
+        members: remaining,
+      };
+    });
   };
 
   const handleToggleAllowLeadLoot = (memberId: string) => {
@@ -336,7 +457,7 @@ export function App() {
                   heroId,
                   title,
                   activeBisSetId: setId,
-                  bisSets: [{ id: setId, name: 'Primary BIS Set', items: [] }],
+                  bisSets: [{ id: setId, name: 'Season 2 BIS', items: [] }],
                 },
               ],
             }
@@ -371,35 +492,71 @@ export function App() {
   };
 
   const addMember = (displayName: string, heroId: HeroId) => {
-    const id = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `p-${Date.now()}`;
+    if (state.members.length === 0) {
+      handleCreateParty({
+        partyName: state.partyName ?? formatPartyNameFromRoomId(roomId),
+        displayName,
+        heroId,
+      });
+      return;
+    }
+
+    const baseSlug =
+      displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') ||
+      `p-${Date.now().toString(36)}`;
+    const id = state.members.some((m) => m.id === baseSlug)
+      ? `${baseSlug}-${Date.now().toString(36).slice(-4)}`
+      : baseSlug;
     const charId = `${id}-${heroId}`;
     const setId = `${charId}-bis`;
-    commitState((prev) => ({
-      ...prev,
-      members: [
-        ...prev.members,
-        {
-          id,
-          displayName,
-          inParty: false,
-          activeCharacterId: charId,
-          ownerUid: auth.user?.uid ?? null,
-          ownerDisplayName: auth.user?.displayName ?? null,
-          ownerProvider: auth.user?.provider ?? null,
-          ownerPhotoUrl: auth.user?.photoUrl ?? null,
-          allowPartyLeadLootCheck: true,
-          characters: [
-            {
-              id: charId,
-              heroId,
-              title: 'Main',
-              activeBisSetId: setId,
-              bisSets: [{ id: setId, name: 'Season 3 BIS', items: [] }],
-            },
-          ],
-        },
-      ],
-    }));
+    const userAlreadyHasSlot = Boolean(
+      auth.user?.uid && state.members.some((m) => m.ownerUid === auth.user?.uid)
+    );
+
+    setManualMemberId(id);
+    commitState((prev) => {
+      const inPartyCount = prev.members.filter((m) => m.inParty).length;
+      const bindToCurrentUser = Boolean(auth.user && !userAlreadyHasSlot);
+      const nextOwners =
+        prev.ownerUids.length === 0 && auth.user
+          ? [auth.user.uid]
+          : prev.ownerUids;
+
+      return {
+        ...prev,
+        ownerUids: nextOwners,
+        leadMemberId: prev.leadMemberId || id,
+        members: [
+          ...prev.members,
+          {
+            id,
+            displayName,
+            inParty: inPartyCount < 4,
+            activeCharacterId: charId,
+            ownerUid: bindToCurrentUser ? (auth.user?.uid ?? null) : null,
+            ownerDisplayName: bindToCurrentUser
+              ? (auth.user?.displayName ?? null)
+              : null,
+            ownerProvider: bindToCurrentUser
+              ? (auth.user?.provider ?? null)
+              : null,
+            ownerPhotoUrl: bindToCurrentUser
+              ? (auth.user?.photoUrl ?? null)
+              : null,
+            allowPartyLeadLootCheck: true,
+            characters: [
+              {
+                id: charId,
+                heroId,
+                title: 'Main',
+                activeBisSetId: setId,
+                bisSets: [{ id: setId, name: 'Season 2 BIS', items: [] }],
+              },
+            ],
+          },
+        ],
+      };
+    });
   };
 
   const addCustomRoute = (route: Omit<RoutePlan, 'id' | 'sourceTag'>) => {
@@ -421,6 +578,7 @@ export function App() {
   };
 
   const handlePlannerStateChange = (payload: PlannerSyncPayload) => {
+    if (state.ownerUids.length === 0) return;
     commitState((prev) => {
       const currentDungeon =
         DUNGEONS.find((d) => d.slug === prev.activeDungeonSlug) ?? DUNGEONS[0];
@@ -474,6 +632,9 @@ export function App() {
     }));
   };
 
+  const displayPartyName =
+    state.partyName ?? formatPartyNameFromRoomId(roomId);
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -486,7 +647,7 @@ export function App() {
           <div>
             <h1 className="brand-title">Fellowshipper</h1>
             <p className="brand-subtitle">
-              4-Player Party Punch List, Synced Dungeon Routes &amp; CombatLogs Radar
+              {displayPartyName} · Owned Party Punch List, Season 2 Routes &amp; BIS
             </p>
           </div>
         </div>
@@ -549,16 +710,31 @@ export function App() {
               value={roomDraft}
               onChange={(e) => setRoomDraft(e.target.value)}
               onBlur={() => {
-                if (roomDraft.trim()) setRoomId(roomDraft.trim().toLowerCase());
+                if (roomDraft.trim()) {
+                  const nextRoom = roomDraft.trim().toLowerCase();
+                  setRoomId(nextRoom);
+                  const nextUrl = new URL(window.location.href);
+                  nextUrl.searchParams.set('room', nextRoom);
+                  window.history.replaceState({}, '', nextUrl.toString());
+                }
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && roomDraft.trim()) {
-                  setRoomId(roomDraft.trim().toLowerCase());
+                  const nextRoom = roomDraft.trim().toLowerCase();
+                  setRoomId(nextRoom);
+                  const nextUrl = new URL(window.location.href);
+                  nextUrl.searchParams.set('room', nextRoom);
+                  window.history.replaceState({}, '', nextUrl.toString());
                 }
               }}
             />
-            <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-              {status === 'connected' ? `${Math.max(1, online.length)} online` : 'PWA'}
+            <span
+              className="mono"
+              style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}
+            >
+              {status === 'connected'
+                ? `${Math.max(1, online.length)} online`
+                : 'PWA'}
             </span>
           </div>
 
@@ -574,35 +750,57 @@ export function App() {
           </button>
 
           {!auth.isFirebaseConfigured ? (
-            <select
-              id="select-my-identity"
-              aria-label="Active Player Profile"
-              className="select-control"
-              value={myMemberId}
-              onChange={(e) => setManualMemberId(e.target.value)}
-            >
-              {state.members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  Profile: {m.displayName}
-                </option>
-              ))}
-            </select>
+            <>
+              {state.members.length > 0 && (
+                <select
+                  id="select-my-identity"
+                  aria-label="Active Player Profile"
+                  className="select-control"
+                  value={myMemberId}
+                  onChange={(e) => setManualMemberId(e.target.value)}
+                >
+                  {state.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      Profile: {m.displayName}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                id="btn-open-party-settings"
+                className="btn btn-sm"
+                onClick={() => setAuthModalOpen(true)}
+                title="Party ownership & roster settings"
+              >
+                <ShieldCheck size={13} style={{ color: 'var(--jade-400)' }} />
+                Party Owners ({state.ownerUids.length})
+              </button>
+            </>
           ) : auth.user ? (
             <button
               type="button"
               id="btn-open-account"
               className="btn btn-sm"
               onClick={() => setAuthModalOpen(true)}
-              title="Manage account & claimed character slot"
+              title="Manage party ownership, co-owners & claimed character slot"
             >
-              <UserCheck size={13} style={{ color: 'var(--jade-400)' }} />
+              {partyPerms.isPartyOwner ? (
+                <ShieldCheck size={13} style={{ color: 'var(--jade-400)' }} />
+              ) : (
+                <UserCheck size={13} style={{ color: 'var(--jade-400)' }} />
+              )}
               {auth.user.displayName}
-              {ownedMemberId
-                ? ` · ${
-                    state.members.find((m) => m.id === ownedMemberId)?.displayName ??
-                    ownedMemberId
-                  }`
-                : ' · Claim Slot'}
+              {partyPerms.isPartyOwner
+                ? ' · Owner'
+                : ownedMemberId
+                  ? ` · ${
+                      state.members.find((m) => m.id === ownedMemberId)
+                        ?.displayName ?? ownedMemberId
+                    }`
+                  : state.members.length > 0
+                    ? ' · Claim Slot'
+                    : ''}
             </button>
           ) : (
             <button
@@ -614,16 +812,6 @@ export function App() {
               <KeyRound size={13} /> Sign In
             </button>
           )}
-
-          <button
-            type="button"
-            id="btn-reset-seed"
-            className="btn btn-ghost btn-sm"
-            onClick={resetRoomToSeed}
-            title="Restore initial spreadsheet seed data"
-          >
-            <RotateCcw size={13} />
-          </button>
         </div>
       </header>
 
@@ -667,11 +855,18 @@ export function App() {
       )}
 
       <PartyRosterBar
+        roomId={roomId}
+        partyName={displayPartyName}
         members={state.members}
         leadMemberId={state.leadMemberId}
         myMemberId={myMemberId}
         online={online}
         ownershipCtx={ownershipCtx}
+        auth={auth}
+        onCreateParty={handleCreateParty}
+        onClaimUnownedParty={handleClaimPartyOwnership}
+        onJoinParty={addMember}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
         onToggleInParty={(memberId) =>
           commitState((prev) => ({
             ...prev,
@@ -707,7 +902,9 @@ export function App() {
             liveRun={state.liveRun}
             pings={state.pings}
             watcher={watcher}
-            onSyncDungeonRoute={(slug, variant) => syncDungeonAndVariant(slug, variant)}
+            onSyncDungeonRoute={(slug, variant) =>
+              syncDungeonAndVariant(slug, variant)
+            }
             onToggleItemAcquired={toggleItemAcquired}
             onSelectPull={(idx) =>
               commitState((prev) => ({ ...prev, activePullIndex: idx }))
@@ -773,6 +970,7 @@ export function App() {
             initialMemberId={myMemberId}
             ownershipCtx={ownershipCtx}
             onClaimMember={handleClaimMember}
+            onRemoveMember={handleRemoveMember}
             onOpenAuthModal={() => setAuthModalOpen(true)}
             onToggleAcquired={toggleItemAcquired}
             onAddBisItem={addBisItem}
@@ -847,10 +1045,16 @@ export function App() {
         open={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         auth={auth}
+        partyName={displayPartyName}
         members={state.members}
         ownershipCtx={ownershipCtx}
+        onRenameParty={handleRenameParty}
+        onClaimPartyOwnership={handleClaimPartyOwnership}
+        onPromoteCoOwner={handlePromoteCoOwner}
+        onRelinquishCoOwner={handleRelinquishCoOwner}
         onClaimMember={handleClaimMember}
         onReleaseMember={handleReleaseMember}
+        onRemoveMember={handleRemoveMember}
         onToggleAllowLeadLoot={handleToggleAllowLeadLoot}
       />
     </div>

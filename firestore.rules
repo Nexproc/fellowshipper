@@ -6,29 +6,72 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Optional: to hard-restrict the entire database to your exact 4 accounts,
-    // replace `return true;` with `return request.auth.uid in ['uid1', 'uid2', 'uid3', 'uid4'];`
     function isAllowedPartyAccount() {
       return isSignedIn();
+    }
+
+    function hasValidOwners(data) {
+      return ('ownerUids' in data)
+        && (data.ownerUids is list)
+        && data.ownerUids.size() >= 1;
+    }
+
+    function isRoomOwnerData(roomData) {
+      return isSignedIn()
+        && ('ownerUids' in roomData)
+        && (roomData.ownerUids is list)
+        && (request.auth.uid in roomData.ownerUids);
+    }
+
+    function isRoomOwner(roomId) {
+      return exists(/databases/$(database)/documents/rooms/$(roomId))
+        && isRoomOwnerData(get(/databases/$(database)/documents/rooms/$(roomId)).data);
     }
 
     function isRoomLead(roomId) {
       let roomData = get(/databases/$(database)/documents/rooms/$(roomId)).data;
       let leadId = roomData.leadMemberId;
-      let leadDoc = get(/databases/$(database)/documents/rooms/$(roomId)/members/$(leadId)).data;
-      return isSignedIn() && ('ownerUid' in leadDoc) && leadDoc.ownerUid == request.auth.uid;
+      return isSignedIn()
+        && leadId != ''
+        && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(leadId))
+        && ('ownerUid' in get(/databases/$(database)/documents/rooms/$(roomId)/members/$(leadId)).data)
+        && get(/databases/$(database)/documents/rooms/$(roomId)/members/$(leadId)).data.ownerUid == request.auth.uid;
     }
 
     match /rooms/{roomId} {
       allow read: if isAllowedPartyAccount();
-      allow create, update: if isAllowedPartyAccount()
-        && request.resource.data.roomId == roomId;
+
+      // Creating a party room requires >= 1 owner and creator's UID in ownerUids
+      allow create: if isAllowedPartyAccount()
+        && request.resource.data.roomId == roomId
+        && hasValidOwners(request.resource.data)
+        && (request.auth.uid in request.resource.data.ownerUids);
+
+      // Updating a party room always preserves >= 1 owner.
+      // Only existing party owners can modify ownerUids, or a signed-in member can claim an unowned legacy room.
+      allow update: if isAllowedPartyAccount()
+        && request.resource.data.roomId == roomId
+        && hasValidOwners(request.resource.data)
+        && (
+          // Legacy unowned room being claimed by the signed-in user
+          (
+            (!('ownerUids' in resource.data) || !(resource.data.ownerUids is list) || resource.data.ownerUids.size() == 0)
+            && (request.auth.uid in request.resource.data.ownerUids)
+          )
+          // Existing party owner updating room (including co-owners or partyName, while keeping >= 1 owner)
+          || isRoomOwnerData(resource.data)
+          // Non-owner party member syncing routes, pulls, checklist, or memberOrder without altering ownerUids
+          || (
+            hasValidOwners(resource.data)
+            && request.resource.data.ownerUids == resource.data.ownerUids
+          )
+        );
+
       allow delete: if false;
 
       match /members/{memberId} {
         allow read: if isAllowedPartyAccount();
 
-        // Initial seed creation or creating a new roster slot
         allow create: if isAllowedPartyAccount()
           && request.resource.data.id == memberId
           && (
@@ -40,7 +83,7 @@ service cloud.firestore {
         allow update: if isAllowedPartyAccount()
           && request.resource.data.id == memberId
           && (
-            // Case 1: Unclaimed slot being claimed (or pre-claim loot/party toggle)
+            // Case 1: Unclaimed slot being claimed or updated
             (
               (!('ownerUid' in resource.data) || resource.data.ownerUid == null)
               && (
@@ -59,17 +102,26 @@ service cloud.firestore {
                 || request.resource.data.ownerUid == null
               )
             )
-            // Case 3: Party Lead checking off loot / party status when owner opted in
+            // Case 3: Party Owner or Party Lead toggling inParty / opt-in loot check without hijacking ownership
             || (
-              (!('allowPartyLeadLootCheck' in resource.data) || resource.data.allowPartyLeadLootCheck == true)
-              && isRoomLead(roomId)
+              (
+                isRoomOwner(roomId)
+                || (
+                  (!('allowPartyLeadLootCheck' in resource.data) || resource.data.allowPartyLeadLootCheck == true)
+                  && isRoomLead(roomId)
+                )
+              )
               && (!('ownerUid' in resource.data) || request.resource.data.ownerUid == resource.data.ownerUid)
               && request.resource.data.displayName == resource.data.displayName
               && request.resource.data.activeCharacterId == resource.data.activeCharacterId
             )
           );
 
-        allow delete: if false;
+        allow delete: if isAllowedPartyAccount()
+          && (
+            isRoomOwner(roomId)
+            || (('ownerUid' in resource.data) && resource.data.ownerUid == request.auth.uid)
+          );
       }
     }
   }

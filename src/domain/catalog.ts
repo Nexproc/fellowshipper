@@ -645,7 +645,7 @@ export const INITIAL_MEMBERS: MemberProfile[] = [
 ];
 
 /**
- * Seeded directly from "Spider Mount List" (10,000 Eternal Score Tracker — currently 9,951 / 10,000).
+ * Legacy spreadsheet fixture retained for unit tests only; never used to seed user rooms.
  */
 export const INITIAL_ETERNAL_CHECKLIST: EternalChecklistRow[] = [
   { dungeonSlug: 'cithrels-fall', targetLevel: 13, bossVariant: 'Ghorn', methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/mnRtosTAOjOYYDjM', finished: false, currentScore: 845 },
@@ -661,6 +661,37 @@ export const INITIAL_ETERNAL_CHECKLIST: EternalChecklistRow[] = [
   { dungeonSlug: 'stormwatch', targetLevel: 16, bossVariant: 'Eira', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/yEwFYdfADLa8tVER', finished: false, currentScore: 800, notes: 'Consider trading for lvl 14 with Ghorn' },
   { dungeonSlug: 'wyrmheart', targetLevel: 16, bossVariant: 'Ghorn', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/aOKmkuC2d6n5eCLu', finished: false, currentScore: 851 },
 ];
+
+export function formatPartyNameFromRoomId(roomId: string): string {
+  const cleaned = roomId.trim().replace(/[-_]+/g, ' ');
+  if (!cleaned) return 'Stronghold Party';
+  return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+/**
+ * Clean Season 2 Eternal Score checklist (0 score, unfinished across the 11 active Season 2 dungeons).
+ */
+export function createDefaultEternalChecklist(): EternalChecklistRow[] {
+  const emissaries: Array<'Ghorn' | 'Krumbug' | 'Eira'> = ['Ghorn', 'Krumbug', 'Eira'];
+  return DUNGEONS.filter((d) => d.seasonStatus === 'season-2').map((dungeon) => {
+    const startIdx = emissaries.indexOf(dungeon.firstBoss);
+    const steps = Math.max(0, Math.round((15 - dungeon.firstLevel) / dungeon.everyXLevels));
+    const bossVariant = emissaries[(startIdx + steps) % emissaries.length];
+    const standardRoute = BUILT_IN_ROUTES.find(
+      (r) => r.dungeonSlug === dungeon.slug && r.sourceTag === 'Season 2'
+    );
+    return {
+      dungeonSlug: dungeon.slug,
+      targetLevel: 15,
+      bossVariant,
+      methodUrl:
+        standardRoute?.methodUrl ??
+        `https://www.method.gg/fellowship/route-planner/${dungeon.slug}`,
+      finished: false,
+      currentScore: 0,
+    };
+  });
+}
 
 export function createIdleLiveRunState(): LiveRunState {
   return {
@@ -685,12 +716,20 @@ export function createIdleLiveRunState(): LiveRunState {
   };
 }
 
+/**
+ * Clean, empty uninitialized state for a room before a Party Owner creates it.
+ * Does NOT pre-populate hardcoded players or fake Eternal scores.
+ */
 export function createDefaultPartyState(roomId = 'stronghold'): PartySyncState {
   const defaultS2 = SEASON_2_ROUTES.stormwatch?.Regular;
   return {
     roomId,
+    partyName: formatPartyNameFromRoomId(roomId),
+    ownerUids: [],
+    createdByUid: null,
+    createdByName: null,
     revision: 1,
-    leadMemberId: 'nick',
+    leadMemberId: '',
     autoFollowLogLead: true,
     activeDungeonSlug: 'stormwatch',
     activeVariant: 'Regular',
@@ -698,11 +737,79 @@ export function createDefaultPartyState(roomId = 'stronghold'): PartySyncState {
     activeRouteR5: defaultS2?.r5Code ?? null,
     activeRoutePulls: defaultS2 ? structuredClone(defaultS2.pulls) : null,
     activePullIndex: 1,
-    plannedEternalLevel: 16,
+    plannedEternalLevel: 15,
     pings: [],
-    members: structuredClone(INITIAL_MEMBERS),
+    members: [],
     customRoutes: [],
-    eternalChecklist: structuredClone(INITIAL_ETERNAL_CHECKLIST),
+    eternalChecklist: createDefaultEternalChecklist(),
     liveRun: createIdleLiveRunState(),
   };
 }
+
+export interface CreateOwnedPartyOptions {
+  roomId: string;
+  partyName?: string;
+  owner: {
+    uid: string;
+    displayName: string;
+    provider: 'google' | 'discord' | 'anonymous' | 'oidc';
+    photoUrl: string | null;
+  };
+  memberDisplayName?: string;
+  heroId: HeroDefinition['id'];
+}
+
+/**
+ * Initializes a new party room explicitly owned by `owner.uid` (`ownerUids.length >= 1`),
+ * creating the owner's claimed character slot with a clean empty BIS set.
+ */
+export function createOwnedPartyState(
+  options: CreateOwnedPartyOptions
+): PartySyncState {
+  const base = createDefaultPartyState(options.roomId);
+  const displayName =
+    options.memberDisplayName?.trim() || options.owner.displayName || 'Leader';
+  const memberId =
+    displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') ||
+    `player-${Date.now().toString(36)}`;
+  const charId = `${memberId}-${options.heroId}`;
+  const setId = `${charId}-bis`;
+
+  const creatorMember: MemberProfile = {
+    id: memberId,
+    displayName,
+    inParty: true,
+    activeCharacterId: charId,
+    ownerUid: options.owner.uid,
+    ownerDisplayName: options.owner.displayName,
+    ownerProvider: options.owner.provider,
+    ownerPhotoUrl: options.owner.photoUrl,
+    allowPartyLeadLootCheck: true,
+    characters: [
+      {
+        id: charId,
+        heroId: options.heroId,
+        title: 'Main',
+        activeBisSetId: setId,
+        bisSets: [
+          {
+            id: setId,
+            name: 'Season 2 BIS',
+            items: [],
+          },
+        ],
+      },
+    ],
+  };
+
+  return {
+    ...base,
+    partyName: options.partyName?.trim() || formatPartyNameFromRoomId(options.roomId),
+    ownerUids: [options.owner.uid],
+    createdByUid: options.owner.uid,
+    createdByName: displayName,
+    leadMemberId: creatorMember.id,
+    members: [creatorMember],
+  };
+}
+
