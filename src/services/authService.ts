@@ -1,17 +1,25 @@
 import {
   GoogleAuthProvider,
   OAuthProvider,
+  getAdditionalUserInfo,
+  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  updateProfile,
   type User,
+  type UserCredential,
 } from 'firebase/auth';
 import { useCallback, useEffect, useState } from 'react';
 import type { AuthProviderKind, AuthUserInfo } from '../domain/types';
 import { getFirebaseServices } from './firebaseClient';
 
-function mapFirebaseUser(user: User): AuthUserInfo {
+function mapFirebaseUser(
+  user: User,
+  overrideName?: string | null,
+  overridePhoto?: string | null
+): AuthUserInfo {
   let provider: AuthProviderKind = 'oidc';
   for (const entry of user.providerData) {
     const pid = entry.providerId.toLowerCase();
@@ -29,6 +37,7 @@ function mapFirebaseUser(user: User): AuthUserInfo {
   }
 
   const fallbackName =
+    overrideName ||
     user.displayName ||
     user.providerData.find((p) => p.displayName)?.displayName ||
     user.email?.split('@')[0] ||
@@ -38,9 +47,42 @@ function mapFirebaseUser(user: User): AuthUserInfo {
     uid: user.uid,
     displayName: fallbackName,
     email: user.email,
-    photoUrl: user.photoURL,
+    photoUrl: overridePhoto || user.photoURL,
     provider,
   };
+}
+
+async function hydrateOidcProfile(
+  cred: UserCredential | null,
+  onHydrated: (info: AuthUserInfo) => void
+): Promise<void> {
+  if (!cred) return;
+  const info = getAdditionalUserInfo(cred);
+  const profile = (info?.profile ?? {}) as Record<string, unknown>;
+  const candidateName = [
+    profile.global_name,
+    profile.preferred_username,
+    profile.name,
+    profile.username,
+  ].find((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  const candidatePhoto =
+    typeof profile.picture === 'string' && profile.picture.startsWith('http')
+      ? profile.picture
+      : null;
+
+  const needsName = !cred.user.displayName && Boolean(candidateName);
+  const needsPhoto = !cred.user.photoURL && Boolean(candidatePhoto);
+  if (needsName || needsPhoto) {
+    try {
+      await updateProfile(cred.user, {
+        displayName: cred.user.displayName || candidateName || undefined,
+        photoURL: cred.user.photoURL || candidatePhoto || undefined,
+      });
+    } catch {
+      // Ignore profile update failure
+    }
+    onHydrated(mapFirebaseUser(cred.user, candidateName, candidatePhoto));
+  }
 }
 
 export interface AuthController {
@@ -64,6 +106,15 @@ export function useFirebaseAuth(): AuthController {
 
   useEffect(() => {
     if (!services) return;
+    void getRedirectResult(services.auth)
+      .then((cred) => hydrateOidcProfile(cred, setUser))
+      .catch((err: { code?: string; message?: string }) => {
+        const code = err?.code ?? '';
+        if (code && code !== 'auth/popup-closed-by-user') {
+          setAuthError(err?.message ?? `Sign-in redirect failed (${code}).`);
+        }
+      });
+
     const unsubscribe = onAuthStateChanged(
       services.auth,
       (fbUser) => {
@@ -84,10 +135,14 @@ export function useFirebaseAuth(): AuthController {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     try {
-      await signInWithPopup(services.auth, provider);
+      const cred = await signInWithPopup(services.auth, provider);
+      await hydrateOidcProfile(cred, setUser);
     } catch (err) {
       const code = (err as { code?: string })?.code ?? '';
-      if (code === 'auth/popup-blocked') {
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
         await signInWithRedirect(services.auth, provider);
         return;
       }
@@ -107,10 +162,14 @@ export function useFirebaseAuth(): AuthController {
     provider.addScope('identify');
     provider.addScope('email');
     try {
-      await signInWithPopup(services.auth, provider);
+      const cred = await signInWithPopup(services.auth, provider);
+      await hydrateOidcProfile(cred, setUser);
     } catch (err) {
       const code = (err as { code?: string })?.code ?? '';
-      if (code === 'auth/popup-blocked') {
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
         await signInWithRedirect(services.auth, provider);
         return;
       }

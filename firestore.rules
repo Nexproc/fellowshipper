@@ -16,7 +16,7 @@ service cloud.firestore {
       let roomData = get(/databases/$(database)/documents/rooms/$(roomId)).data;
       let leadId = roomData.leadMemberId;
       let leadDoc = get(/databases/$(database)/documents/rooms/$(roomId)/members/$(leadId)).data;
-      return isSignedIn() && leadDoc.ownerUid == request.auth.uid;
+      return isSignedIn() && ('ownerUid' in leadDoc) && leadDoc.ownerUid == request.auth.uid;
     }
 
     match /rooms/{roomId} {
@@ -51,17 +51,19 @@ service cloud.firestore {
             )
             // Case 2: Slot owner managing their characters, BIS sets, or releasing claim
             || (
-              resource.data.ownerUid == request.auth.uid
+              ('ownerUid' in resource.data)
+              && resource.data.ownerUid == request.auth.uid
               && (
-                request.resource.data.ownerUid == request.auth.uid
+                !('ownerUid' in request.resource.data)
+                || request.resource.data.ownerUid == request.auth.uid
                 || request.resource.data.ownerUid == null
               )
             )
             // Case 3: Party Lead checking off loot / party status when owner opted in
             || (
-              resource.data.allowPartyLeadLootCheck == true
+              (!('allowPartyLeadLootCheck' in resource.data) || resource.data.allowPartyLeadLootCheck == true)
               && isRoomLead(roomId)
-              && request.resource.data.ownerUid == resource.data.ownerUid
+              && (!('ownerUid' in resource.data) || request.resource.data.ownerUid == resource.data.ownerUid)
               && request.resource.data.displayName == resource.data.displayName
               && request.resource.data.activeCharacterId == resource.data.activeCharacterId
             )

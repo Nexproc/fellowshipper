@@ -26,10 +26,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Configure Pages
@@ -38,16 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build PWA with GitHub Pages base path
+      - name: Resolve Firebase Web SDK & OAuth config from GCP
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_DISCORD_OIDC_PROVIDER_ID: ${{ secrets.VITE_DISCORD_OIDC_PROVIDER_ID || 'oidc.discord' }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/ci-resolve-firebase-env.mjs
+
+      - name: Build PWA with GitHub Pages base path
         run: npx tsc -b && npx vite build --base=/fellowshipper/
 
       - name: Upload Pages artifact

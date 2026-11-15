@@ -164,9 +164,9 @@ export function usePartyRoom(
     authUserRef.current = authUser;
   }, [authUser]);
 
-  // Effect 1: Firebase Cloud Sync (Firestore + Realtime Database) when configured
+  // Effect 1: Firebase Cloud Sync (Firestore + Realtime Database) when configured & signed in
   useEffect(() => {
-    if (!services) return;
+    if (!services || !authUser) return;
 
     let disposed = false;
 
@@ -730,10 +730,15 @@ export function usePartyRoom(
     bcRef.current?.postMessage({ type: 'LOCAL_SYNC', state: fresh });
   }, [services, roomId]);
 
+  const effectiveStatus: SyncConnectionStatus =
+    services && !authUser ? 'local-only' : status;
+  const effectiveOnline: OnlinePresence[] =
+    services && !authUser ? [] : online;
+
   return {
     state,
-    online,
-    status,
+    online: effectiveOnline,
+    status: effectiveStatus,
     syncBackend,
     syncError,
     clearSyncError: () => setSyncError(null),

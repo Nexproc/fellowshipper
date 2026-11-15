@@ -8,7 +8,7 @@ on:
 
 jobs:
   build_and_deploy:
-    name: Verify & Deploy SPWA to Firebase Hosting
+    name: Verify & Deploy SPWA + Security Rules to GCP Firebase
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,35 +28,24 @@ jobs:
           npm test
           npm run lint
 
-      - name: Build production PWA bundle
+      - name: Resolve Firebase Web SDK & OAuth config from GCP
+        id: fb_env
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_DISCORD_OIDC_PROVIDER_ID: ${{ secrets.VITE_DISCORD_OIDC_PROVIDER_ID || 'oidc.discord' }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/ci-resolve-firebase-env.mjs
+
+      - name: Build production PWA bundle
         run: npm run build
 
-      - name: Check Firebase deploy credentials
-        id: creds
+      - name: Deploy Firestore Rules, RTDB Rules & Hosting to GCP Firebase
+        if: steps.fb_env.outputs.ready == 'true'
         env:
-          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          PROJ_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROJECT_ID: ${{ steps.fb_env.outputs.project_id }}
         run: |
-          if [[ -n "$SA_JSON" && -n "$PROJ_ID" ]]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Deploy to GCP Firebase Hosting
-        if: steps.creds.outputs.ready == 'true'
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          channelId: live
+          CRED_FILE="$(mktemp /tmp/fb-sa-XXXXXX.json)"
+          trap 'rm -f "$CRED_FILE"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CRED_FILE"
+          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" npx --yes firebase-tools deploy \
+            --project "$PROJECT_ID" \
+            --only firestore:rules,database,hosting
