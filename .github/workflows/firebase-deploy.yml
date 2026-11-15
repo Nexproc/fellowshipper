@@ -14,10 +14,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -40,8 +40,20 @@ jobs:
           VITE_DISCORD_OIDC_PROVIDER_ID: ${{ secrets.VITE_DISCORD_OIDC_PROVIDER_ID || 'oidc.discord' }}
         run: npm run build
 
+      - name: Check Firebase deploy credentials
+        id: creds
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROJ_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+        run: |
+          if [[ -n "$SA_JSON" && -n "$PROJ_ID" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to GCP Firebase Hosting
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' && secrets.VITE_FIREBASE_PROJECT_ID != '' }}
+        if: steps.creds.outputs.ready == 'true'
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
