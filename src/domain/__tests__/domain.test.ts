@@ -256,6 +256,16 @@ describe('GCP Firebase Account Ownership & Per-Character Permissions', () => {
     expect(s2Dungeons).toHaveLength(11);
     expect(legacyDungeons).toHaveLength(5);
 
+    for (const legacy of legacyDungeons) {
+      expect(legacy.defaultPulls).toEqual([]);
+      const legacyRoutes = BUILT_IN_ROUTES.filter(
+        (r) => r.dungeonSlug === legacy.slug
+      );
+      for (const lr of legacyRoutes) {
+        expect(lr.pulls).toBeUndefined();
+      }
+    }
+
     for (const dungeon of s2Dungeons) {
       expect(dungeon.levelId).toBeTruthy();
       const regular = SEASON_2_ROUTES[dungeon.slug]?.Regular;

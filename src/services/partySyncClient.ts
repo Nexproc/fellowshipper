@@ -13,7 +13,11 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BUILT_IN_ROUTES, createDefaultPartyState } from '../domain/catalog';
+import {
+  BUILT_IN_ROUTES,
+  createDefaultPartyState,
+  DUNGEONS,
+} from '../domain/catalog';
 import { parseCombatLogLine, reduceCombatEvent } from '../domain/combatLogParser';
 import { selectBestRoute } from '../domain/punchList';
 import type {
@@ -54,6 +58,19 @@ function stripUndefined<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function sanitizeRoutePulls(
+  dungeonSlug: string,
+  pulls: PullNode[] | null | undefined
+): PullNode[] | null {
+  const dungeon = DUNGEONS.find((d) => d.slug === dungeonSlug);
+  if (!dungeon?.levelId) return null;
+  if (!Array.isArray(pulls) || pulls.length === 0) return null;
+  const hasRealGameData = pulls.some(
+    (p) => (p.packTags?.length ?? 0) > 0 || (p.enemySummary?.length ?? 0) > 0
+  );
+  return hasRealGameData ? pulls : null;
+}
+
 function extractSharedDoc(state: PartySyncState): SharedRoomDoc {
   return {
     roomId: state.roomId,
@@ -64,7 +81,10 @@ function extractSharedDoc(state: PartySyncState): SharedRoomDoc {
     activeVariant: state.activeVariant,
     activeRouteId: state.activeRouteId,
     activeRouteR5: state.activeRouteR5 ?? null,
-    activeRoutePulls: state.activeRoutePulls ?? null,
+    activeRoutePulls: sanitizeRoutePulls(
+      state.activeDungeonSlug,
+      state.activeRoutePulls
+    ),
     activePullIndex: state.activePullIndex,
     plannedEternalLevel: state.plannedEternalLevel,
     customRoutes: state.customRoutes,
@@ -80,22 +100,32 @@ function loadCachedState(roomId: string): PartySyncState {
     if (raw) {
       const parsed = JSON.parse(raw) as PartySyncState;
       if (parsed && parsed.roomId && Array.isArray(parsed.members)) {
-        // Migrate pre-Season-2 default cache so returning mobile users open on Stormwatch S2
-        if (
-          parsed.activeRouteR5 === undefined &&
-          parsed.activeDungeonSlug === 'ransack-of-drakheim'
-        ) {
-          return {
-            ...parsed,
-            activeDungeonSlug: seed.activeDungeonSlug,
-            activeVariant: seed.activeVariant,
-            activeRouteId: seed.activeRouteId,
-            activeRouteR5: seed.activeRouteR5 ?? null,
-            activeRoutePulls: seed.activeRoutePulls ?? null,
-            activePullIndex: 1,
-          };
+        const migrationKey = `fellowshipper:s2CleanMigrated:${roomId}`;
+        const alreadyMigrated = localStorage.getItem(migrationKey) === '1';
+        if (!alreadyMigrated) {
+          localStorage.setItem(migrationKey, '1');
+          const cachedDungeon = DUNGEONS.find(
+            (d) => d.slug === parsed.activeDungeonSlug
+          );
+          if (!cachedDungeon?.levelId) {
+            return {
+              ...parsed,
+              activeDungeonSlug: seed.activeDungeonSlug,
+              activeVariant: seed.activeVariant,
+              activeRouteId: seed.activeRouteId,
+              activeRouteR5: seed.activeRouteR5 ?? null,
+              activeRoutePulls: seed.activeRoutePulls ?? null,
+              activePullIndex: 1,
+            };
+          }
         }
-        return parsed;
+        return {
+          ...parsed,
+          activeRoutePulls: sanitizeRoutePulls(
+            parsed.activeDungeonSlug,
+            parsed.activeRoutePulls
+          ),
+        };
       }
     }
   } catch {
@@ -210,23 +240,27 @@ export function usePartyRoom(
             return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
           });
 
+          const nextDungeonSlug =
+            data.activeDungeonSlug ?? prev.activeDungeonSlug;
+          const rawPulls =
+            data.activeRoutePulls !== undefined
+              ? data.activeRoutePulls
+              : (prev.activeRoutePulls ?? null);
+
           const merged: PartySyncState = {
             ...prev,
             roomId,
             revision: data.revision ?? prev.revision,
             leadMemberId: data.leadMemberId ?? prev.leadMemberId,
             autoFollowLogLead: data.autoFollowLogLead ?? prev.autoFollowLogLead,
-            activeDungeonSlug: data.activeDungeonSlug ?? prev.activeDungeonSlug,
+            activeDungeonSlug: nextDungeonSlug,
             activeVariant: data.activeVariant ?? prev.activeVariant,
             activeRouteId: data.activeRouteId ?? prev.activeRouteId,
             activeRouteR5:
               data.activeRouteR5 !== undefined
                 ? data.activeRouteR5
                 : (prev.activeRouteR5 ?? null),
-            activeRoutePulls:
-              data.activeRoutePulls !== undefined
-                ? data.activeRoutePulls
-                : (prev.activeRoutePulls ?? null),
+            activeRoutePulls: sanitizeRoutePulls(nextDungeonSlug, rawPulls),
             activePullIndex: data.activePullIndex ?? prev.activePullIndex,
             plannedEternalLevel:
               data.plannedEternalLevel ?? prev.plannedEternalLevel,

@@ -5,36 +5,29 @@ import type {
   DungeonDefinition,
   LiveRunState,
   MapPing,
-  PullNode,
 } from '../domain/types';
 
-export type TacticalMapLayerMode = 'method-overlay' | 'method-clean' | 'radar';
+export type TacticalMapLayerMode = 'map' | 'radar';
 
 interface TacticalRouteMapProps {
   dungeon: DungeonDefinition;
-  pulls: readonly PullNode[];
-  activePullIndex: number;
   variant: BossVariant;
   liveRun: LiveRunState;
   pings: readonly MapPing[];
   layerMode?: TacticalMapLayerMode;
   zoom?: number;
   tall?: boolean;
-  onSelectPull: (index: number) => void;
   onPingMap: (x: number, y: number, label: string) => void;
 }
 
 export function TacticalRouteMap({
   dungeon,
-  pulls,
-  activePullIndex,
   variant,
   liveRun,
   pings,
-  layerMode = 'method-overlay',
+  layerMode = 'map',
   zoom = 1,
   tall = false,
-  onSelectPull,
   onPingMap,
 }: TacticalRouteMapProps) {
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
@@ -60,7 +53,6 @@ export function TacticalRouteMap({
     layerMode !== 'radar' &&
     Boolean(dungeon.mapImageUrl) &&
     failedImageUrl !== dungeon.mapImageUrl;
-  const showOverlayNodes = layerMode !== 'method-clean';
 
   const unitList = Object.values(liveRun.units);
   const projectedUnits = projectUnitsToTacticalMap(unitList, dungeon.worldBounds);
@@ -126,7 +118,7 @@ export function TacticalRouteMap({
         <div className="hud-pill">
           <strong style={{ fontFamily: 'var(--font-display)' }}>{dungeon.name}</strong>
           <span className="mono" style={{ color: 'var(--gold-400)' }}>
-            {variant} Route
+            {variant}
           </span>
         </div>
 
@@ -149,7 +141,7 @@ export function TacticalRouteMap({
         {showMethodMap && (
           <img
             src={dungeon.mapImageUrl}
-            alt={`Method.gg stitched dungeon map for ${dungeon.name}`}
+            alt={`Dungeon map for ${dungeon.name}`}
             className="tactical-method-img"
             referrerPolicy="no-referrer"
             draggable={false}
@@ -164,22 +156,8 @@ export function TacticalRouteMap({
           preserveAspectRatio="none"
           onClick={handleSvgClick}
           role="img"
-          aria-label={`Tactical route map for ${dungeon.name}`}
+          aria-label={`Dungeon map for ${dungeon.name}`}
         >
-          <defs>
-            <marker
-              id="route-arrow"
-              viewBox="0 0 10 10"
-              refX="7"
-              refY="5"
-              markerWidth="4"
-              markerHeight="4"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="hsl(38 92% 58%)" />
-            </marker>
-          </defs>
-
           {/* Subtle topographic stone contours when viewing Radar Grid mode */}
           {!showMethodMap && (
             <>
@@ -210,94 +188,6 @@ export function TacticalRouteMap({
               />
             </>
           )}
-
-          {/* Route Corridor Path */}
-          {showOverlayNodes && pulls.length > 1 && (
-            <>
-              <polyline
-                points={pulls.map((p) => `${p.x},${(p.y * 62.5) / 100}`).join(' ')}
-                fill="none"
-                stroke="hsl(216 28% 6% / 0.78)"
-                strokeWidth="1.25"
-                strokeLinecap="round"
-              />
-              <polyline
-                points={pulls.map((p) => `${p.x},${(p.y * 62.5) / 100}`).join(' ')}
-                fill="none"
-                stroke="hsl(38 92% 58% / 0.92)"
-                strokeWidth="0.68"
-                strokeDasharray="1.4 0.9"
-                markerMid="url(#route-arrow)"
-              />
-            </>
-          )}
-
-          {/* Pull Waypoint Nodes */}
-          {showOverlayNodes &&
-            pulls.map((node) => {
-              const cy = (node.y * 62.5) / 100;
-              const isSelected = node.index === activePullIndex;
-              const fill =
-                node.kind === 'boss'
-                  ? 'hsl(8 76% 52%)'
-                  : node.kind === 'miniboss'
-                  ? 'hsl(38 88% 54%)'
-                  : 'hsl(215 24% 14%)';
-              const stroke = isSelected
-                ? 'hsl(42 98% 76%)'
-                : node.kind === 'pack'
-                ? 'hsl(38 84% 62%)'
-                : 'hsl(216 26% 8%)';
-
-              return (
-                <g
-                  key={node.index}
-                  transform={`translate(${node.x}, ${cy})`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectPull(node.index);
-                  }}
-                  style={{ cursor: 'pointer' }}
-                >
-                  {isSelected && (
-                    <circle
-                      r="3.8"
-                      fill="none"
-                      stroke="hsl(38 92% 64% / 0.85)"
-                      strokeWidth="0.55"
-                    />
-                  )}
-                  <circle
-                    r={node.kind === 'boss' ? 2.55 : 2.15}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth="0.48"
-                  />
-                  <text
-                    y="0.7"
-                    textAnchor="middle"
-                    fill="hsl(42 24% 97%)"
-                    fontSize="1.9"
-                    fontFamily="JetBrains Mono, monospace"
-                    fontWeight="700"
-                  >
-                    {node.index}
-                  </text>
-                  <text
-                    y={node.kind === 'boss' ? -3.4 : 4.3}
-                    textAnchor="middle"
-                    fill={isSelected ? 'hsl(42 96% 78%)' : 'hsl(210 24% 94%)'}
-                    stroke="hsl(216 28% 6% / 0.92)"
-                    strokeWidth="0.55"
-                    paintOrder="stroke"
-                    fontSize="1.7"
-                    fontWeight={isSelected ? '700' : '600'}
-                  >
-                    {node.label.length > 22 ? `${node.label.slice(0, 20)}…` : node.label}
-                  </text>
-                </g>
-              );
-            })}
 
           {/* Live Combat-Log Player Trails & Positions */}
           {projectedUnits.map((unit) => {

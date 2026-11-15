@@ -4,7 +4,6 @@ import {
   Copy,
   Crosshair,
   ExternalLink,
-  Layers,
   Map as MapIcon,
   Maximize2,
   Minimize2,
@@ -474,7 +473,7 @@ export function MethodRouteEmbed({
   onPlannerStateChange,
   onSaveEditedRoute,
 }: MethodRouteEmbedProps) {
-  const [layerMode, setLayerMode] = useState<TacticalMapLayerMode>('method-overlay');
+  const [layerMode, setLayerMode] = useState<TacticalMapLayerMode>('map');
   const [zoomIndex, setZoomIndex] = useState(0);
   const [isTall, setIsTall] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -524,7 +523,7 @@ export function MethodRouteEmbed({
         <span className="s2-pool-badge is-legacy">LEGACY S1</span>
         <span>
           <strong>{dungeon.name}</strong> rotated out of the active Season 2 dungeon
-          pool. Showing archived Season 1 Method.gg link &amp; CombatLog radar.
+          pool. Open the archived Method.gg link below for Season 1 route details.
         </span>
       </div>
 
@@ -533,21 +532,12 @@ export function MethodRouteEmbed({
           <button
             type="button"
             role="tab"
-            aria-selected={layerMode === 'method-overlay'}
-            className={`btn btn-sm ${layerMode === 'method-overlay' ? 'btn-primary' : ''}`}
-            onClick={() => setLayerMode('method-overlay')}
+            aria-selected={layerMode === 'map'}
+            className={`btn btn-sm ${layerMode === 'map' ? 'btn-primary' : ''}`}
+            onClick={() => setLayerMode('map')}
           >
-            S1 Map Preview
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={layerMode === 'method-clean'}
-            className={`btn btn-sm ${layerMode === 'method-clean' ? 'btn-primary' : ''}`}
-            onClick={() => setLayerMode('method-clean')}
-          >
-            <Layers size={13} />
-            Clean Map
+            <MapIcon size={13} />
+            Map
           </button>
           <button
             type="button"
@@ -586,15 +576,12 @@ export function MethodRouteEmbed({
 
       <TacticalRouteMap
         dungeon={dungeon}
-        pulls={pulls}
-        activePullIndex={activePullIndex}
         variant={variant}
         liveRun={liveRun}
         pings={pings}
         layerMode={layerMode}
         zoom={zoom}
         tall={isTall}
-        onSelectPull={onSelectPull}
         onPingMap={onPingMap}
       />
 

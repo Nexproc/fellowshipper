@@ -374,26 +374,28 @@ export function RoutePlannerView({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              type="button"
-              className="btn btn-sm"
-              disabled={activePullIndex <= 1}
-              onClick={() => handleStepPull(Math.max(1, activePullIndex - 1))}
-            >
-              <ChevronLeft size={14} /> Prev Pull
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={activePullIndex >= pulls.length}
-              onClick={() =>
-                handleStepPull(Math.min(pulls.length, activePullIndex + 1))
-              }
-            >
-              Next Pull <ChevronRight size={14} />
-            </button>
-          </div>
+          {pulls.length > 0 && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={activePullIndex <= 1}
+                onClick={() => handleStepPull(Math.max(1, activePullIndex - 1))}
+              >
+                <ChevronLeft size={14} /> Prev Pull
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={activePullIndex >= pulls.length}
+                onClick={() =>
+                  handleStepPull(Math.min(pulls.length, activePullIndex + 1))
+                }
+              >
+                Next Pull <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -405,99 +407,129 @@ export function RoutePlannerView({
               <h2 className="panel-title">Synchronized Pull Plan</h2>
               <p className="panel-subtitle">
                 Timer {formatDurationSeconds(activeDungeon.targetSeconds)} ·{' '}
-                {Math.round(totalRouteScore)}/{activeDungeon.killScoreTarget} KS (
-                {totalRoutePct.toFixed(1)}%)
+                {pulls.length > 0
+                  ? `${Math.round(totalRouteScore)}/${activeDungeon.killScoreTarget} KS (${totalRoutePct.toFixed(1)}%)`
+                  : `Target ${activeDungeon.killScoreTarget} KS`}
               </p>
             </div>
           </div>
           <div className="panel-body">
-            <div className="pull-list">
-              {pulls.map((p) => {
-                const detailLine =
-                  p.enemySummary && p.enemySummary.length > 0
-                    ? p.enemySummary.slice(0, 3).join(', ')
-                    : p.notes;
-                const scoreLabel =
-                  p.kind === 'boss' && p.killScore === 0
-                    ? 'BOSS'
-                    : p.killPercent !== undefined && p.killPercent > 0
-                      ? `${p.killPercent.toFixed(1)}%`
-                      : p.killScore > 0
-                        ? `+${p.killScore}`
-                        : 'BOSS';
-
-                return (
-                  <button
-                    key={p.index}
-                    type="button"
-                    className={`pull-step ${
-                      p.index === activePullIndex ? 'is-selected' : ''
-                    }`}
-                    onClick={() => handleStepPull(p.index)}
+            {pulls.length === 0 ? (
+              <div
+                style={{
+                  fontSize: '0.8rem',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <span>
+                  <strong>{activeDungeon.name}</strong> rotated out of the Season 2
+                  dungeon pool, so in-game Season 2 enemy pack coordinates are not
+                  installed for this map.
+                </span>
+                {activeRoute?.methodUrl && (
+                  <a
+                    href={activeRoute.methodUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-primary btn-sm"
+                    style={{ alignSelf: 'flex-start' }}
                   >
-                    <span className={`pull-num kind-${p.kind}`}>{p.index}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          flexWrap: 'wrap',
-                        }}
-                      >
-                        <span style={{ fontWeight: 600, fontSize: '0.83rem' }}>
-                          {p.label}
-                        </span>
-                        {p.mobCount !== undefined && p.mobCount > 0 && (
-                          <span
-                            className="mono"
-                            style={{
-                              fontSize: '0.7rem',
-                              color: 'var(--text-muted)',
-                            }}
-                          >
-                            ({p.mobCount} {p.mobCount === 1 ? 'mob' : 'mobs'})
-                          </span>
-                        )}
-                      </div>
-                      {p.packTags && p.packTags.length > 0 && (
-                        <div className="pack-tag-row">
-                          {p.packTags.slice(0, 6).map((tag) => (
-                            <span key={tag} className="pack-tag-chip mono">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {detailLine && (
+                    Open Archived Method.gg Route <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="pull-list">
+                {pulls.map((p) => {
+                  const detailLine =
+                    p.enemySummary && p.enemySummary.length > 0
+                      ? p.enemySummary.slice(0, 3).join(', ')
+                      : p.notes;
+                  const scoreLabel =
+                    p.kind === 'boss' && p.killScore === 0
+                      ? 'BOSS'
+                      : p.killPercent !== undefined && p.killPercent > 0
+                        ? `${p.killPercent.toFixed(1)}%`
+                        : p.killScore > 0
+                          ? `+${p.killScore}`
+                          : 'BOSS';
+
+                  return (
+                    <button
+                      key={p.index}
+                      type="button"
+                      className={`pull-step ${
+                        p.index === activePullIndex ? 'is-selected' : ''
+                      }`}
+                      onClick={() => handleStepPull(p.index)}
+                    >
+                      <span className={`pull-num kind-${p.kind}`}>{p.index}</span>
+                      <div style={{ minWidth: 0 }}>
                         <div
                           style={{
-                            fontSize: '0.73rem',
-                            color: 'var(--text-secondary)',
-                            marginTop: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            flexWrap: 'wrap',
                           }}
                         >
-                          {detailLine}
+                          <span style={{ fontWeight: 600, fontSize: '0.83rem' }}>
+                            {p.label}
+                          </span>
+                          {p.mobCount !== undefined && p.mobCount > 0 && (
+                            <span
+                              className="mono"
+                              style={{
+                                fontSize: '0.7rem',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              ({p.mobCount} {p.mobCount === 1 ? 'mob' : 'mobs'})
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <span
-                      className="mono"
-                      style={{
-                        fontSize: '0.75rem',
-                        color:
-                          scoreLabel === 'BOSS'
-                            ? 'var(--ember-500)'
-                            : 'var(--gold-400)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {scoreLabel}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                        {p.packTags && p.packTags.length > 0 && (
+                          <div className="pack-tag-row">
+                            {p.packTags.slice(0, 6).map((tag) => (
+                              <span key={tag} className="pack-tag-chip mono">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {detailLine && (
+                          <div
+                            style={{
+                              fontSize: '0.73rem',
+                              color: 'var(--text-secondary)',
+                              marginTop: 2,
+                            }}
+                          >
+                            {detailLine}
+                          </div>
+                        )}
+                      </div>
+                      <span
+                        className="mono"
+                        style={{
+                          fontSize: '0.75rem',
+                          color:
+                            scoreLabel === 'BOSS'
+                              ? 'var(--ember-500)'
+                              : 'var(--gold-400)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {scoreLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
 

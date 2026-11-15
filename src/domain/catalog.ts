@@ -69,41 +69,8 @@ export const AFFIX_CATALOG: Record<number, { name: string; kind: string }> = {
   27: { name: 'Truesight', kind: 'Curse' },
 };
 
-function makeAdventurePulls(bosses: string[], killTarget: number): PullNode[] {
-  const perPack = Math.round(killTarget / 5);
-  const pulls: PullNode[] = [
-    { index: 1, label: 'Entry Vanguard + Caster Pack', x: 14, y: 76, killScore: perPack, kind: 'pack', notes: 'Group & kick primary caster' },
-    { index: 2, label: 'Courtyard Double Pull', x: 31, y: 58, killScore: perPack, kind: 'pack', notes: 'Chain into patrol once first kick lands' },
-    { index: 3, label: 'Emissary Shrine Pocket', x: 49, y: 36, killScore: 20, kind: 'miniboss', notes: 'Ghorn (+20s) / Krumbug (+60s) / Eira (+90s) rotation' },
-    { index: 4, label: 'Bridge / Gatekeepers', x: 66, y: 52, killScore: perPack * 2 - 10, kind: 'pack', notes: 'Save Spirit burst for high-HP lieutenant' },
-  ];
-  if (bosses.length >= 2) {
-    pulls.push({ index: 5, label: bosses[0], x: 75, y: 28, killScore: 0, kind: 'boss', notes: 'Mid-instance boss encounter' });
-    pulls.push({ index: 6, label: 'Sanctum Approach Pack', x: 84, y: 54, killScore: Math.max(10, killTarget - (perPack * 4 + 10)), kind: 'pack', notes: 'Finish 100% kill score before final arena' });
-    pulls.push({ index: 7, label: bosses[1], x: 90, y: 24, killScore: 0, kind: 'boss', notes: 'Final boss — commit Spirit & relics' });
-  } else {
-    pulls.push({ index: 5, label: 'Sanctum Stairs Pack', x: 79, y: 38, killScore: Math.max(12, killTarget - (perPack * 4 + 10)), kind: 'pack', notes: 'Top off 100% kill count before boss' });
-    pulls.push({ index: 6, label: bosses[0] ?? 'Final Boss', x: 90, y: 22, killScore: 0, kind: 'boss', notes: 'Final boss — commit Spirit & relics' });
-  }
-  return pulls;
-}
-
-function makeCapstonePulls(bosses: string[], killTarget: number): PullNode[] {
-  const chunk = Math.round((killTarget - 20) / 6);
-  return [
-    { index: 1, label: 'Outer Gate Triple Pack', x: 11, y: 80, killScore: chunk, kind: 'pack', notes: 'Pop opener cooldowns + Spirit on pull' },
-    { index: 2, label: 'Rampart Patrol + Sentinels', x: 24, y: 62, killScore: chunk, kind: 'pack', notes: 'Line-of-sight ranged casters behind pillar' },
-    { index: 3, label: bosses[0] ?? 'Boss 1', x: 35, y: 32, killScore: 0, kind: 'boss', notes: 'First Capstone Boss' },
-    { index: 4, label: 'Inner Ward + Emissary Pocket', x: 48, y: 54, killScore: 20 + chunk, kind: 'miniboss', notes: 'Clear Emissary miniboss for timer refund & boon' },
-    { index: 5, label: 'Gallery Trash Cleave', x: 60, y: 70, killScore: chunk, kind: 'pack', notes: 'Watch frontal cleaves; stun priority channeler' },
-    { index: 6, label: bosses[1] ?? 'Boss 2', x: 71, y: 34, killScore: 0, kind: 'boss', notes: 'Second Capstone Boss' },
-    { index: 7, label: 'Citadel Ascent Gauntlet', x: 82, y: 58, killScore: Math.max(15, killTarget - (20 + chunk * 4)), kind: 'pack', notes: 'Verify 100% Kill Score before final threshold' },
-    { index: 8, label: bosses[2] ?? 'Final Boss', x: 91, y: 20, killScore: 0, kind: 'boss', notes: 'Final Capstone Boss — full Spirit burn' },
-  ];
-}
-
-function s2Pulls(slug: string, fallback: PullNode[]): PullNode[] {
-  return SEASON_2_ROUTES[slug]?.Regular?.pulls ?? fallback;
+function s2Pulls(slug: string): PullNode[] {
+  return SEASON_2_ROUTES[slug]?.Regular?.pulls ?? [];
 }
 
 function enrichSeason2Routes(routes: readonly RoutePlan[]): readonly RoutePlan[] {
@@ -136,7 +103,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 4,
     worldBounds: { minX: -2000, maxX: 18500, minY: -7000, maxY: 54000 },
-    defaultPulls: makeCapstonePulls(['Chilgar the Drowned', 'Fodir Kaldur', 'Auga Handhafi the Blind'], 260),
+    defaultPulls: [],
   },
   {
     zoneId: 12,
@@ -153,7 +120,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 3,
     worldBounds: { minX: -4500, maxX: 14500, minY: -5000, maxY: 22000 },
-    defaultPulls: s2Pulls('stormwatch', makeAdventurePulls(['Warlord Brogg'], 155)),
+    defaultPulls: s2Pulls('stormwatch'),
   },
   {
     zoneId: 6,
@@ -170,7 +137,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Eira',
     firstLevel: 1,
     worldBounds: { minX: -6000, maxX: 14000, minY: -6000, maxY: 18000 },
-    defaultPulls: s2Pulls('empyrean-sands', makeAdventurePulls(['Sin-Magir'], 140)),
+    defaultPulls: s2Pulls('empyrean-sands'),
   },
   {
     zoneId: 21,
@@ -187,7 +154,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 2,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
-    defaultPulls: s2Pulls('urrak-markets', makeAdventurePulls(['Drazhul the Fleshbroker', 'Slavetrader Brull'], 160)),
+    defaultPulls: s2Pulls('urrak-markets'),
   },
   {
     zoneId: 7,
@@ -204,7 +171,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -8000, maxX: 16000, minY: -8000, maxY: 26000 },
-    defaultPulls: s2Pulls('cithrels-fall', makeCapstonePulls(['Ancient Koros', 'Noor, The Betrayer', 'Cithrel'], 188)),
+    defaultPulls: s2Pulls('cithrels-fall'),
   },
   {
     zoneId: 11,
@@ -221,7 +188,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 3,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 18000 },
-    defaultPulls: makeAdventurePulls(['Malgut the Fetid', 'Akari the Everdawn Lord'], 110),
+    defaultPulls: [],
   },
   {
     zoneId: 25,
@@ -238,7 +205,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 18000 },
-    defaultPulls: s2Pulls('godfall-quarry', makeAdventurePulls(['Vaerith Vorn', 'Godfall Titan'], 135)),
+    defaultPulls: s2Pulls('godfall-quarry'),
   },
   {
     zoneId: 5,
@@ -255,7 +222,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Krumbug',
     firstLevel: 2,
     worldBounds: { minX: -8000, maxX: 18000, minY: -8000, maxY: 28000 },
-    defaultPulls: makeCapstonePulls(["Moar'gore, Master of Sacrifice", "Prophet Ez'rath", "Vun'Kahr, the Thorned Maw"], 238),
+    defaultPulls: [],
   },
   {
     zoneId: 24,
@@ -272,7 +239,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 19000 },
-    defaultPulls: s2Pulls('silken-hollow', makeAdventurePulls(['Vexira, Mother of Nightmares'], 168)),
+    defaultPulls: s2Pulls('silken-hollow'),
   },
   {
     zoneId: 13,
@@ -289,7 +256,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Eira',
     firstLevel: 3,
     worldBounds: { minX: -8000, maxX: 19000, minY: -8000, maxY: 30000 },
-    defaultPulls: s2Pulls('wraithtide-vault', makeCapstonePulls(['Deathless Katrine', 'First Mate Marrow', "Bael'Aurum"], 281)),
+    defaultPulls: s2Pulls('wraithtide-vault'),
   },
   {
     zoneId: 8,
@@ -306,7 +273,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Eira',
     firstLevel: 2,
     worldBounds: { minX: -5000, maxX: 14000, minY: -5000, maxY: 18000 },
-    defaultPulls: makeAdventurePulls(['Apostate Veras'], 109),
+    defaultPulls: [],
   },
   {
     zoneId: 15,
@@ -323,7 +290,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 2,
     worldBounds: { minX: -5000, maxX: 14000, minY: -5000, maxY: 18000 },
-    defaultPulls: makeAdventurePulls(['Sinthara'], 131),
+    defaultPulls: [],
   },
   {
     zoneId: 31,
@@ -340,7 +307,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
-    defaultPulls: s2Pulls('scryers-peak', makeAdventurePulls(['Overlord Varux'], 160)),
+    defaultPulls: s2Pulls('scryers-peak'),
   },
   {
     zoneId: 29,
@@ -357,7 +324,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Eira',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
-    defaultPulls: s2Pulls('ruins-of-regath', makeAdventurePulls(['Xurath, Fist of the Warden'], 152)),
+    defaultPulls: s2Pulls('ruins-of-regath'),
   },
   {
     zoneId: 30,
@@ -378,13 +345,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -8000, maxX: 19000, minY: -8000, maxY: 30000 },
-    defaultPulls: s2Pulls(
-      'xul-the-blood-monolith',
-      makeCapstonePulls(
-        ["Xul'vorith, Sentinel of the Bloodbound Gate", 'Han-Eth, Sentry of Xul', "Vel'korath the Sanctified"],
-        260
-      )
-    ),
+    defaultPulls: s2Pulls('xul-the-blood-monolith'),
   },
   {
     zoneId: 32,
@@ -401,7 +362,7 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -6000, maxX: 16000, minY: -6000, maxY: 22000 },
-    defaultPulls: s2Pulls('crown-of-the-wild', makeAdventurePulls(['Scrofa, Wild Incarnate'], 135)),
+    defaultPulls: s2Pulls('crown-of-the-wild'),
   },
 ] as const;
 
