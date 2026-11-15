@@ -149,6 +149,9 @@
 
 /* Fellowshipper embed mode */
 .embed-mode .brand,.embed-mode #together{display:none!important}
+.embed-mode #tooltip{pointer-events:none!important;width:auto!important;max-width:225px!important;padding:7px 10px!important;line-height:1.45!important;overflow:hidden!important}
+.embed-mode:not(.embed-edit-tools) #tooltip .tip-pack{display:none!important}
+.embed-mode:not(.embed-edit-tools) #tooltip .tip-pack-heading{margin-top:4px;padding-top:4px;font-size:10.5px}
 .embed-mode .topbar{height:46px;padding:0 12px;gap:10px;display:flex;align-items:center}
 .embed-mode .dungeon-picker label,.embed-mode .difficulty-picker label{display:none}
 .embed-mode .dungeon-picker{min-width:0;flex:0 1 auto}
@@ -156,15 +159,19 @@
 .embed-mode .difficulty-picker select{padding:5px 7px;font-size:12px}
 .embed-mode #workspace{height:calc(100dvh - 46px)}
 .embed-mode .sidebar{width:265px;padding:12px 12px 10px}
-@media(max-width:760px){
-  .embed-mode .topbar{height:46px;padding:0 8px;gap:6px;display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .embed-mode .dungeon-picker{display:none}
-  .embed-mode .embed-mobile-tab{display:inline-flex!important;align-items:center;gap:4px;background:#29271f;color:var(--gold);border-color:#77603c;font-weight:650;font-size:11px;padding:5px 9px;white-space:nowrap;flex-shrink:0}
-  .embed-mode .header-actions{margin-left:auto;display:flex;gap:4px;flex-shrink:0}
-  .embed-mode #workspace{height:calc(100dvh - 46px);flex-direction:column;overflow:hidden}
-  .embed-mode:not(.embed-show-pulls) .map-section{height:100%;min-height:0;flex:1}
-  .embed-mode:not(.embed-show-pulls) .sidebar{display:none}
-  .embed-mode.embed-show-pulls .map-section{display:none}
-  .embed-mode.embed-show-pulls .sidebar{width:100%;height:100%;max-height:none;min-height:0;flex:1;border-top:0}
-}
 
+/* Clean full-bleed map mode inside Fellowshipper */
+.embed-clean .topbar,
+.embed-clean .sidebar,
+.embed-clean .map-search,
+.embed-clean #search-results,
+.embed-clean #embed-mobile-tab{display:none!important}
+.embed-clean #workspace{height:100dvh!important}
+.embed-clean .map-section{width:100%!important;height:100%!important;min-height:0!important;flex:1 1 auto!important}
+.embed-clean:not(.embed-edit-tools) .map-controls{display:none!important}
+.embed-clean.embed-edit-tools .map-controls{top:12px;left:12px;max-width:calc(100% - 70px);background:#121922f2;border-color:#2c3a4a}
+.embed-clean.embed-edit-tools .map-controls .modifiers{display:none!important}
+.embed-clean .display-options-button{top:12px;right:12px;opacity:.76;transition:opacity .14s ease}
+.embed-clean .display-options-button:hover{opacity:1}
+.embed-clean:not(.embed-edit-tools) #markers > g:not(:has(.assigned-ring)):not(:has(.boss-ring)):not(.pack-hover){opacity:.28;transition:opacity .12s ease}
+.embed-clean:not(.embed-edit-tools) #status-badges > g{opacity:.72}

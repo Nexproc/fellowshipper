@@ -484,9 +484,43 @@ a:hover {
 
 .routes-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(330px, 0.95fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.8fr) minmax(305px, 0.85fr);
+  gap: 16px;
   align-items: start;
+}
+
+.routes-unified-header {
+  padding: 11px 14px;
+  gap: 10px;
+}
+
+.routes-header-primary,
+.routes-header-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.routes-variant-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.routes-preset-select {
+  min-width: 190px;
+  max-width: 280px;
+}
+
+.routes-eternal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .panel {
@@ -740,7 +774,10 @@ a:hover {
 .pull-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  max-height: 540px;
+  overflow-y: auto;
+  padding-right: 3px;
 }
 
 .pull-step {
@@ -1021,6 +1058,14 @@ a:hover {
   transition: transform 120ms ease-out;
 }
 
+.tactical-pan-stage.is-dragging {
+  transition: none !important;
+}
+
+.tactical-pan-stage.is-dragging .tactical-svg {
+  cursor: grabbing;
+}
+
 .tactical-method-img {
   position: absolute;
   inset: 0;
@@ -1040,9 +1085,8 @@ a:hover {
 .s2-planner-frame-wrap {
   position: relative;
   width: 100%;
-  height: 640px;
+  height: 660px;
   background: #0a1017;
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .s2-planner-frame-wrap.is-compact {

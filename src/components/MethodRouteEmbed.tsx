@@ -4,10 +4,14 @@ import {
   Copy,
   Crosshair,
   ExternalLink,
+  Eye,
   Map as MapIcon,
   Maximize2,
   Minimize2,
+  Pencil,
+  Plus,
   Radar,
+  Undo2,
   ZoomIn,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -73,7 +77,11 @@ function buildPlannerUrl(
   const base = import.meta.env.BASE_URL || '/';
   const normalizedBase = base.endsWith('/') ? base : `${base}/`;
   const params = new URLSearchParams();
-  if (embed) params.set('embed', '1');
+  if (embed) {
+    params.set('embed', '1');
+    params.set('clean', '1');
+  }
+  params.set('v', 'fp2');
   params.set('dungeon', levelId);
   const hash = buildPlannerShareHash(r5Code);
   return `${normalizedBase}planner/index.html?${params.toString()}${hash}`;
@@ -91,7 +99,6 @@ interface Season2PlannerFrameProps {
   liveRun: LiveRunState;
   pings: readonly MapPing[];
   compact: boolean;
-  methodUrl: string;
   onSelectPull: (index: number) => void;
   onPlannerStateChange?: (payload: PlannerSyncPayload) => void;
   onSaveEditedRoute?: (payload: {
@@ -114,7 +121,6 @@ function Season2PlannerFrame({
   liveRun,
   pings,
   compact,
-  methodUrl,
   onSelectPull,
   onPlannerStateChange,
   onSaveEditedRoute,
@@ -122,6 +128,8 @@ function Season2PlannerFrame({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [plannerReady, setPlannerReady] = useState(false);
   const [isTall, setIsTall] = useState(false);
+  const [routeOnly, setRouteOnly] = useState(false);
+  const [editTools, setEditTools] = useState(false);
   const [copied, setCopied] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [liveScore, setLiveScore] = useState<{
@@ -139,6 +147,16 @@ function Season2PlannerFrame({
     levelId,
     effectiveR5,
     activePullIndex,
+  });
+  const lastFromIframeRef = useRef({
+    dungeonId: '',
+    r5Code: '',
+    activePullIndex: 0,
+    pullCount: -1,
+  });
+  const prevParentRouteRef = useRef({
+    levelId,
+    effectiveR5,
   });
   const onSelectPullRef = useRef(onSelectPull);
   const onPlannerStateChangeRef = useRef(onPlannerStateChange);
@@ -204,32 +222,48 @@ function Season2PlannerFrame({
         });
 
         const nextPullIdx = Math.max(1, Number(msg.activePullIndex) || 1);
-        if (nextPullIdx !== latestSyncRef.current.activePullIndex) {
-          onSelectPullRef.current(nextPullIdx);
-        }
-
         const rawPulls = Array.isArray(msg.pulls)
           ? (msg.pulls as PullNode[])
           : [];
 
-        onPlannerStateChangeRef.current?.({
-          reason: typeof msg.reason === 'string' ? msg.reason : 'render',
+        const prevIframe = lastFromIframeRef.current;
+        const routeStructureChanged =
+          prevIframe.dungeonId !== dungeonId ||
+          prevIframe.r5Code !== r5Code ||
+          prevIframe.pullCount !== rawPulls.length;
+
+        // Record before notifying parent so React's re-render does not echo sync-route back
+        lastFromIframeRef.current = {
           dungeonId,
           r5Code,
-          shareHash:
-            typeof msg.shareHash === 'string'
-              ? msg.shareHash
-              : buildPlannerShareHash(r5Code),
-          routeName:
-            typeof msg.routeName === 'string'
-              ? msg.routeName
-              : (activeRoute?.label ?? dungeon.name),
           activePullIndex: nextPullIdx,
-          totalScore,
-          requiredScore,
-          totalPercent,
-          pulls: rawPulls,
-        });
+          pullCount: rawPulls.length,
+        };
+
+        if (nextPullIdx !== latestSyncRef.current.activePullIndex) {
+          onSelectPullRef.current(nextPullIdx);
+        }
+
+        if (routeStructureChanged) {
+          onPlannerStateChangeRef.current?.({
+            reason: typeof msg.reason === 'string' ? msg.reason : 'render',
+            dungeonId,
+            r5Code,
+            shareHash:
+              typeof msg.shareHash === 'string'
+                ? msg.shareHash
+                : buildPlannerShareHash(r5Code),
+            routeName:
+              typeof msg.routeName === 'string'
+                ? msg.routeName
+                : (activeRoute?.label ?? dungeon.name),
+            activePullIndex: nextPullIdx,
+            totalScore,
+            requiredScore,
+            totalPercent,
+            pulls: rawPulls,
+          });
+        }
       }
     };
 
@@ -237,19 +271,56 @@ function Season2PlannerFrame({
     return () => window.removeEventListener('message', handleMessage);
   }, [activeRoute?.label, dungeon.killScoreTarget, dungeon.name]);
 
-  // Push route / dungeon / active-pull changes into the embedded planner
+  // Push route / dungeon / active-pull changes into the embedded planner without echoing iframe-originated state
   useEffect(() => {
     if (!plannerReady) return;
+    const fromIframe = lastFromIframeRef.current;
+    const prevParent = prevParentRouteRef.current;
+    const routeChangedFromParent =
+      prevParent.levelId !== levelId || prevParent.effectiveR5 !== effectiveR5;
+    prevParentRouteRef.current = { levelId, effectiveR5 };
+
+    if (
+      fromIframe.dungeonId === levelId &&
+      fromIframe.r5Code === (effectiveR5 ?? '') &&
+      fromIframe.activePullIndex === activePullIndex
+    ) {
+      return;
+    }
+
+    if (!routeChangedFromParent && activePullIndex === fromIframe.activePullIndex) {
+      return;
+    }
+
+    const r5ToPush =
+      routeChangedFromParent &&
+      !(fromIframe.dungeonId === levelId && fromIframe.r5Code === (effectiveR5 ?? ''))
+        ? effectiveR5
+        : undefined;
+
     iframeRef.current?.contentWindow?.postMessage(
       {
         type: 'fellowshipper:sync-route',
         dungeonId: levelId,
-        r5Code: effectiveR5,
+        r5Code: r5ToPush,
         activePullIndex,
       },
       window.location.origin
     );
   }, [plannerReady, levelId, effectiveR5, activePullIndex]);
+
+  // Sync clean map display options (Route Only & Edit Map tools)
+  useEffect(() => {
+    if (!plannerReady) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        type: 'fellowshipper:set-clean-options',
+        routeOnly,
+        editTools,
+      },
+      window.location.origin
+    );
+  }, [plannerReady, routeOnly, editTools]);
 
   // Focus & zoom to pull enemies when user clicks a pull in Fellowshipper's Pull Stepper
   useEffect(() => {
@@ -304,6 +375,13 @@ function Season2PlannerFrame({
     );
   };
 
+  const handlePlannerPullAction = (action: 'add-pull' | 'undo') => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'fellowshipper:pull-action', action },
+      window.location.origin
+    );
+  };
+
   const handleCopyShareLink = async () => {
     try {
       await navigator.clipboard.writeText(standaloneUrl);
@@ -342,12 +420,11 @@ function Season2PlannerFrame({
     <div className="method-embed-shell">
       <div className="method-embed-toolbar">
         <div className="method-embed-modes">
-          <span className="s2-pool-badge is-s2">S2 GAME DATA</span>
           <button
             type="button"
             className="btn btn-sm"
             onClick={handleFitWholeMap}
-            title="Zoom out to fit the full dungeon map and all enemy packs"
+            title="Zoom out to fit the full dungeon map"
           >
             <MapIcon size={13} />
             Whole Map
@@ -356,31 +433,95 @@ function Season2PlannerFrame({
             type="button"
             className="btn btn-sm btn-primary"
             onClick={handleFocusActivePull}
-            title="Pan and highlight the active pull's exact enemy packs on the map"
+            title="Pan and highlight the active pull's enemy packs on the map"
           >
             <Crosshair size={13} />
-            Focus Pull #{activePullIndex}
+            Pull #{activePullIndex}
           </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${routeOnly ? 'btn-live' : ''}`}
+            onClick={() => setRouteOnly((prev) => !prev)}
+            title="Hide unpulled dungeon packs so only your route's pulls are shown"
+          >
+            <Eye size={13} />
+            Route Only
+          </button>
+          {!compact && (
+            <button
+              type="button"
+              className={`btn btn-sm ${editTools ? 'btn-live' : ''}`}
+              onClick={() => setEditTools((prev) => !prev)}
+              title="Show drawing, note, and pack-editing tools on the map"
+            >
+              <Pencil size={13} />
+              Edit Map
+            </button>
+          )}
+          {!compact && editTools && (
+            <>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => handlePlannerPullAction('add-pull')}
+                title="Add a new empty pull step"
+              >
+                <Plus size={13} />
+                Pull
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => handlePlannerPullAction('undo')}
+                title="Undo last map edit"
+              >
+                <Undo2 size={13} />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="method-embed-actions">
           <span
             className={`mono s2-score-pill ${
               computedPct >= 100 ? 'is-complete' : ''
             }`}
+            title="Planned Kill Score vs dungeon requirement"
           >
             {computedPct.toFixed(1)}% · {Math.round(computedTotalScore)}/
             {computedReqScore} KS
           </span>
-        </div>
-
-        <div className="method-embed-actions">
+          {(isModifiedFromPreset || savedNotice) && onSaveEditedRoute && (
+            <button
+              type="button"
+              className="btn btn-live btn-sm"
+              onClick={handleSaveEdited}
+              title="Save this edited pack route into the party's Saved Routes list"
+            >
+              {savedNotice ? <Check size={13} /> : <BookmarkPlus size={13} />}
+              {savedNotice ? 'Saved' : 'Save Edit'}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-sm"
-            onClick={() => setIsTall((prev) => !prev)}
-            title={isTall ? 'Standard map height' : 'Expand map height'}
+            onClick={() => void handleCopyShareLink()}
+            title="Copy Season 2 #r5= route share URL"
           >
-            {isTall ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            {isTall ? 'Compact' : 'Tall'}
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? 'Copied' : 'Copy #r5'}
           </button>
+          {!compact && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setIsTall((prev) => !prev)}
+              title={isTall ? 'Standard map height' : 'Expand map height'}
+            >
+              {isTall ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              {isTall ? 'Compact' : 'Tall'}
+            </button>
+          )}
           <a
             href={standaloneUrl}
             target="_blank"
@@ -388,7 +529,7 @@ function Season2PlannerFrame({
             className="btn btn-sm"
             title="Open full-screen Season 2 Route Planner in a new tab"
           >
-            Full Tab <ExternalLink size={12} />
+            <ExternalLink size={12} />
           </a>
         </div>
       </div>
@@ -405,53 +546,6 @@ function Season2PlannerFrame({
           className="s2-planner-iframe"
           loading="eager"
         />
-      </div>
-
-      <div className="method-route-bar">
-        <div className="method-route-meta">
-          <span className="lead-tag">LIVE SYNC</span>
-          <span className="method-route-title">
-            {activeRoute?.label ?? `${dungeon.name} (${variant})`}
-          </span>
-          <span className="mono method-route-code">
-            {pulls.length} pulls
-            {isModifiedFromPreset ? ' · edited live' : ''}
-          </span>
-        </div>
-
-        <div className="method-embed-actions">
-          {(isModifiedFromPreset || savedNotice) && onSaveEditedRoute && (
-            <button
-              type="button"
-              className="btn btn-live btn-sm"
-              onClick={handleSaveEdited}
-              title="Save this edited pack route into the party's Saved Routes list"
-            >
-              {savedNotice ? <Check size={13} /> : <BookmarkPlus size={13} />}
-              {savedNotice ? 'Saved to Party' : 'Save Edited Route'}
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => void handleCopyShareLink()}
-            title="Copy Season 2 #r5= route share URL"
-          >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
-            {copied ? 'Copied #r5' : 'Copy S2 Link'}
-          </button>
-          {methodUrl && (
-            <a
-              href={methodUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-sm"
-              title="Open archived Method.gg link in new tab"
-            >
-              Method S1 <ExternalLink size={12} />
-            </a>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -495,7 +589,6 @@ export function MethodRouteEmbed({
         liveRun={liveRun}
         pings={pings}
         compact={compact}
-        methodUrl={methodUrl}
         onSelectPull={onSelectPull}
         onPlannerStateChange={onPlannerStateChange}
         onSaveEditedRoute={onSaveEditedRoute}

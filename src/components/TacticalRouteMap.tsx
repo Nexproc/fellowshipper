@@ -133,7 +133,7 @@ export function TacticalRouteMap({
       </div>
 
       <div
-        className="tactical-pan-stage"
+        className={`tactical-pan-stage ${dragOrigin ? 'is-dragging' : ''}`}
         style={{
           transform: `translate(${activePan.x}px, ${activePan.y}px) scale(${zoom})`,
         }}
