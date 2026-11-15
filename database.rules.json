@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        "liveRun": {
+          ".write": "auth != null"
+        },
+        "pings": {
+          ".write": "auth != null"
+        },
+        "presence": {
+          "$clientId": {
+            ".write": "auth != null"
+          }
+        }
+      }
+    }
+  }
+}

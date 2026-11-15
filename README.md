@@ -9,19 +9,26 @@ Fellowshipper is a Single-Page Progressive Web App (SPWA) built for 4-player *Fe
 | **Multi-Character BIS Sets** | Supports all 12 *Fellowship* heroes and 14 gear slots (`Head` through `Weapon`), with multiple named BIS sets saved per character. |
 | **Live `CombatLogs` Auto-Sync** | Watches `Fellowship/fellowship/Saved/CombatLogs/CombatLog*.txt` via `showDirectoryPicker` (or the CLI tailer). When `DUNGEON_START` fires, it decodes zone ID, Eternal tier, and affix IDs (`20 = Ghorn`, `21 = Krumbug`, `22 = Eira`, `12 = Empowered`), switches the room's active route, and maps live `(x, y, facing)` coordinates plus Kill Score. |
 | **10,000 Eternal Score Tracker** | Computes timed targets (`615 + 15 * (level - 1)`) and predicts Emissary rotations toward the Spider Mount goal. |
+| **Google & Discord Login + Ownership** | Integrates GCP **Firebase Auth / Identity Platform** (`Google Sign-In` + `Discord OIDC`), **Cloud Firestore** (`rooms/{roomId}/members/{memberId}` per-player write rules), and **Firebase Realtime Database** (`550ms` live radar telemetry & presence). |
 
-## Quick Start
+## Cloud Deployment on GCP (Recommended — Zero Servers to Maintain)
 
-Install dependencies and launch the single-port Vite + WebSocket room server:
+See [**FIREBASE_GCP_SETUP.md**](FIREBASE_GCP_SETUP.md) for the full 10-minute setup linking your existing GCP project (and free GCP credits) to:
+- **Firebase Hosting** + GitHub Actions CI/CD ([`.github/workflows/firebase-deploy.yml`](.github/workflows/firebase-deploy.yml))
+- **Google Sign-In** & **Discord OAuth2** via OpenID Connect (`oidc.discord`)
+- **Firestore** character/BIS ownership security rules ([`firestore.rules`](firestore.rules))
+- **Realtime Database** live `CombatLogs` radar & presence rules ([`database.rules.json`](database.rules.json))
+
+## Local Development
+
+Install dependencies and launch the local Vite + WebSocket fallback server (works offline without Firebase keys):
 
 ```bash
 npm install
 npm run dev
 ```
 
-Share `http://localhost:5173/?room=stronghold` with your party. You can also install the page as a standalone desktop app from Chrome or Edge to keep it pinned on a second monitor.
-
-## Production Server
+## Self-Hosted Node Server (Optional Alternative)
 
 Build the client bundle first. Then start `server/prodServer.ts`, which serves static assets alongside `/ws/party` and `/api/rooms/:roomId` on `PORT` (default `4173`):
 

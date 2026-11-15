@@ -92,4 +92,26 @@ function partySyncVitePlugin(): Plugin {
 
 export default defineConfig({
   plugins: [react(), partySyncVitePlugin()],
+  build: {
+    chunkSizeWarningLimit: 650,
+    rolldownOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/@firebase/firestore') || id.includes('node_modules/firebase/firestore')) {
+            return 'firebase-firestore';
+          }
+          if (id.includes('node_modules/@firebase/auth') || id.includes('node_modules/firebase/auth')) {
+            return 'firebase-auth';
+          }
+          if (id.includes('node_modules/@firebase/database') || id.includes('node_modules/firebase/database')) {
+            return 'firebase-rtdb';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/lucide-react')) {
+            return 'ui-vendor';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 });

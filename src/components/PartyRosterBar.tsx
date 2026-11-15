@@ -1,4 +1,5 @@
-import { Crown, Radio } from 'lucide-react';
+import { Crown, Lock, Radio } from 'lucide-react';
+import { evaluateMemberPermissions, type OwnershipContext } from '../domain/ownership';
 import { resolveActiveCharacter } from '../domain/punchList';
 import type { MemberProfile, OnlinePresence } from '../domain/types';
 
@@ -7,6 +8,7 @@ interface PartyRosterBarProps {
   leadMemberId: string;
   myMemberId: string;
   online: readonly OnlinePresence[];
+  ownershipCtx: OwnershipContext;
   onToggleInParty: (memberId: string) => void;
   onSelectCharacter: (memberId: string, characterId: string) => void;
   onSetLead: (memberId: string) => void;
@@ -17,6 +19,7 @@ export function PartyRosterBar({
   leadMemberId,
   myMemberId,
   online,
+  ownershipCtx,
   onToggleInParty,
   onSelectCharacter,
   onSetLead,
@@ -25,6 +28,7 @@ export function PartyRosterBar({
     <section className="party-strip" aria-label="Active 4-Player Party Roster">
       {members.map((member) => {
         const resolved = resolveActiveCharacter(member);
+        const perms = evaluateMemberPermissions(member, ownershipCtx);
         const memberPeers = online.filter((p) => p.memberId === member.id);
         const isOnline = memberPeers.length > 0;
         const isStreamingLogs = memberPeers.some((p) => p.isWatchingLogs);
@@ -50,6 +54,16 @@ export function PartyRosterBar({
                   {member.displayName}
                   {member.id === myMemberId ? ' (You)' : ''}
                 </span>
+                {member.ownerUid && (
+                  <span
+                    title={`Claimed by ${member.ownerDisplayName ?? member.displayName}${
+                      member.ownerProvider ? ` (${member.ownerProvider})` : ''
+                    }`}
+                    style={{ display: 'inline-flex', color: 'var(--jade-400)' }}
+                  >
+                    <Lock size={11} />
+                  </span>
+                )}
                 {resolved && (
                   <span className={`role-tag role-${resolved.hero.role}`}>
                     {resolved.hero.role}
@@ -89,6 +103,8 @@ export function PartyRosterBar({
                 aria-label={`${member.displayName} active character`}
                 className="select-control"
                 style={{ flex: 1, minWidth: 0 }}
+                disabled={!perms.canEditBuilds && ownershipCtx.authEnforced}
+                title={perms.lockReason ?? undefined}
                 value={resolved?.character.id ?? ''}
                 onChange={(e) => onSelectCharacter(member.id, e.target.value)}
               >
@@ -107,6 +123,7 @@ export function PartyRosterBar({
                 <input
                   id={`toggle-in-party-${member.id}`}
                   type="checkbox"
+                  disabled={!perms.canToggleLootAndParty && ownershipCtx.authEnforced}
                   checked={member.inParty}
                   onChange={() => onToggleInParty(member.id)}
                 />

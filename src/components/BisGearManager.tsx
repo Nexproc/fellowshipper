@@ -1,6 +1,7 @@
-import { ExternalLink, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, ExternalLink, KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
 import { useState } from 'react';
 import { DUNGEONS, GEAR_SLOTS, HEROES } from '../domain/catalog';
+import { evaluateMemberPermissions, type OwnershipContext } from '../domain/ownership';
 import { findHero } from '../domain/punchList';
 import type {
   BisItemEntry,
@@ -12,6 +13,9 @@ import type {
 interface BisGearManagerProps {
   members: readonly MemberProfile[];
   initialMemberId: string;
+  ownershipCtx: OwnershipContext;
+  onClaimMember: (memberId: string) => void;
+  onOpenAuthModal: () => void;
   onToggleAcquired: (
     memberId: string,
     characterId: string,
@@ -44,6 +48,9 @@ interface BisGearManagerProps {
 export function BisGearManager({
   members,
   initialMemberId,
+  ownershipCtx,
+  onClaimMember,
+  onOpenAuthModal,
   onToggleAcquired,
   onAddBisItem,
   onDeleteBisItem,
@@ -72,6 +79,8 @@ export function BisGearManager({
 
   const member =
     members.find((m) => m.id === selectedMemberId) ?? members[0];
+  const perms = evaluateMemberPermissions(member, ownershipCtx);
+
   const activeChar =
     member.characters.find((c) => c.id === member.activeCharacterId) ??
     member.characters[0];
@@ -81,7 +90,7 @@ export function BisGearManager({
   const hero = activeChar ? findHero(activeChar.heroId) : HEROES[0];
 
   const handleAddItem = () => {
-    if (!activeChar || !activeSet || !itemName.trim()) return;
+    if (!perms.canEditBuilds || !activeChar || !activeSet || !itemName.trim()) return;
     onAddBisItem(member.id, activeChar.id, activeSet.id, {
       slot,
       itemName: itemName.trim(),
@@ -99,11 +108,12 @@ export function BisGearManager({
       {/* Left Sidebar: Player & Character Switcher */}
       <aside className="panel">
         <div className="panel-header">
-          <h2 className="panel-title">Party Roster & Alts</h2>
+          <h2 className="panel-title">Party Roster &amp; Alts</h2>
           <button
             type="button"
             id="btn-new-member"
             className="btn btn-sm"
+            disabled={ownershipCtx.authEnforced && !ownershipCtx.currentUser}
             onClick={() => setShowAddMember((v) => !v)}
           >
             <Plus size={13} /> Player
@@ -137,6 +147,9 @@ export function BisGearManager({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {members.map((m) => {
               const isCurrent = m.id === member.id;
+              const isMine =
+                Boolean(ownershipCtx.currentUser?.uid) &&
+                m.ownerUid === ownershipCtx.currentUser?.uid;
               return (
                 <button
                   key={m.id}
@@ -147,9 +160,13 @@ export function BisGearManager({
                   onClick={() => setSelectedMemberId(m.id)}
                 >
                   <div>
-                    <div style={{ fontWeight: 700 }}>{m.displayName}</div>
+                    <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {m.displayName}
+                      {isMine && <span className="lead-tag">You</span>}
+                    </div>
                     <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
                       {m.characters.length} hero{m.characters.length === 1 ? '' : 'es'} saved
+                      {m.ownerDisplayName ? ` · ${m.ownerDisplayName}` : ''}
                     </div>
                   </div>
                   <span className="mono" style={{ fontSize: '0.72rem', color: m.inParty ? 'var(--jade-400)' : 'var(--text-muted)' }}>
@@ -166,17 +183,19 @@ export function BisGearManager({
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
               {member.displayName}&apos;s Characters
             </span>
-            <button
-              type="button"
-              id="btn-add-character"
-              className="btn btn-sm"
-              onClick={() => setShowAddChar((v) => !v)}
-            >
-              <Plus size={12} /> Hero
-            </button>
+            {perms.canEditBuilds && (
+              <button
+                type="button"
+                id="btn-add-character"
+                className="btn btn-sm"
+                onClick={() => setShowAddChar((v) => !v)}
+              >
+                <Plus size={12} /> Hero
+              </button>
+            )}
           </div>
 
-          {showAddChar && (
+          {showAddChar && perms.canEditBuilds && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, background: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)' }}>
               <select
                 className="select-control"
@@ -219,7 +238,17 @@ export function BisGearManager({
                   type="button"
                   className={`pull-step ${isSelected ? 'is-selected' : ''}`}
                   style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}
-                  onClick={() => onSelectActiveCharacter(member.id, ch.id)}
+                  disabled={!perms.canEditBuilds && ownershipCtx.authEnforced}
+                  title={
+                    perms.canEditBuilds
+                      ? `Switch ${member.displayName}'s active hero`
+                      : (perms.lockReason ?? undefined)
+                  }
+                  onClick={() => {
+                    if (perms.canEditBuilds) {
+                      onSelectActiveCharacter(member.id, ch.id);
+                    }
+                  }}
                 >
                   <div>
                     <div style={{ fontWeight: 600 }}>{chHero.name}</div>
@@ -237,6 +266,59 @@ export function BisGearManager({
 
       {/* Main Column: Active Character BIS Set Editor */}
       <section className="panel">
+        {/* Ownership & Claim Status Strip */}
+        {ownershipCtx.authEnforced && (
+          <div
+            style={{
+              padding: '10px 18px',
+              background: perms.canEditBuilds
+                ? 'rgba(16, 185, 129, 0.08)'
+                : 'rgba(245, 158, 11, 0.08)',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              fontSize: '0.8rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {perms.isClaimed ? (
+                <Lock size={14} style={{ color: perms.canEditBuilds ? 'var(--jade-400)' : 'var(--amber-400)' }} />
+              ) : (
+                <Unlock size={14} style={{ color: 'var(--amber-400)' }} />
+              )}
+              <span>
+                {perms.canEditBuilds
+                  ? `Signed in as owner of ${member.displayName} — character & BIS edits sync directly to Firestore.`
+                  : perms.lockReason}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              {!ownershipCtx.currentUser && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={onOpenAuthModal}
+                >
+                  <KeyRound size={13} /> Sign in (Google / Discord)
+                </button>
+              )}
+              {perms.canClaim && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => onClaimMember(member.id)}
+                >
+                  <CheckCircle2 size={13} /> Claim {member.displayName}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="panel-header">
           <div>
             <h2 className="panel-title">
@@ -254,6 +336,7 @@ export function BisGearManager({
                 id="select-bis-set"
                 aria-label="Active BIS Set"
                 className="select-control"
+                disabled={!perms.canEditBuilds}
                 value={activeSet?.id ?? ''}
                 onChange={(e) =>
                   onSelectActiveBisSet(member.id, activeChar.id, e.target.value)
@@ -267,14 +350,16 @@ export function BisGearManager({
               </select>
             )}
 
-            <button
-              type="button"
-              id="btn-new-bis-set"
-              className="btn btn-sm"
-              onClick={() => setShowAddSet((v) => !v)}
-            >
-              <Plus size={13} /> New BIS Set
-            </button>
+            {perms.canEditBuilds && (
+              <button
+                type="button"
+                id="btn-new-bis-set"
+                className="btn btn-sm"
+                onClick={() => setShowAddSet((v) => !v)}
+              >
+                <Plus size={13} /> New BIS Set
+              </button>
+            )}
 
             {activeSet?.gemGuideUrl && (
               <a
@@ -289,7 +374,7 @@ export function BisGearManager({
           </div>
         </div>
 
-        {showAddSet && activeChar && (
+        {showAddSet && activeChar && perms.canEditBuilds && (
           <div
             style={{
               padding: '12px 18px',
@@ -318,75 +403,77 @@ export function BisGearManager({
                 setShowAddSet(false);
               }}
             >
-              Create & Activate Set
+              Create &amp; Activate Set
             </button>
           </div>
         )}
 
-        {/* Add Item Row */}
-        <div
-          style={{
-            padding: '14px 18px',
-            background: 'var(--bg-canvas)',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'grid',
-            gridTemplateColumns: '120px minmax(160px, 1.2fr) minmax(170px, 1.1fr) minmax(160px, 1fr) auto',
-            gap: 8,
-            alignItems: 'center',
-          }}
-        >
-          <select
-            aria-label="Gear Slot"
-            className="select-control"
-            value={slot}
-            onChange={(e) => setSlot(e.target.value as GearSlot)}
+        {/* Add Item Row (visible when permitted to edit builds) */}
+        {perms.canEditBuilds && (
+          <div
+            style={{
+              padding: '14px 18px',
+              background: 'var(--bg-canvas)',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'grid',
+              gridTemplateColumns: '120px minmax(160px, 1.2fr) minmax(170px, 1.1fr) minmax(160px, 1fr) auto',
+              gap: 8,
+              alignItems: 'center',
+            }}
           >
-            {GEAR_SLOTS.map((gs) => (
-              <option key={gs} value={gs}>
-                {gs}
-              </option>
-            ))}
-          </select>
+            <select
+              aria-label="Gear Slot"
+              className="select-control"
+              value={slot}
+              onChange={(e) => setSlot(e.target.value as GearSlot)}
+            >
+              {GEAR_SLOTS.map((gs) => (
+                <option key={gs} value={gs}>
+                  {gs}
+                </option>
+              ))}
+            </select>
 
-          <input
-            aria-label="BIS Item Name"
-            className="text-input"
-            placeholder="Item Name (e.g. Trollhide Leggings)"
-            value={itemName}
-            onChange={(e) => setItemName(e.target.value)}
-          />
+            <input
+              aria-label="BIS Item Name"
+              className="text-input"
+              placeholder="Item Name (e.g. Trollhide Leggings)"
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+            />
 
-          <select
-            aria-label="Drop Dungeon"
-            className="select-control"
-            value={dungeonSlug}
-            onChange={(e) => setDungeonSlug(e.target.value)}
-          >
-            {DUNGEONS.map((d) => (
-              <option key={d.slug} value={d.slug}>
-                {d.name}
-              </option>
-            ))}
-            <option value="any-dungeon">Any Dungeon (Global Drop)</option>
-          </select>
+            <select
+              aria-label="Drop Dungeon"
+              className="select-control"
+              value={dungeonSlug}
+              onChange={(e) => setDungeonSlug(e.target.value)}
+            >
+              {DUNGEONS.map((d) => (
+                <option key={d.slug} value={d.slug}>
+                  {d.name}
+                </option>
+              ))}
+              <option value="any-dungeon">Any Dungeon (Global Drop)</option>
+            </select>
 
-          <input
-            aria-label="Secondary Stats"
-            className="text-input"
-            placeholder="Stats (e.g. Haste +220, Crit +110)"
-            value={stats}
-            onChange={(e) => setStats(e.target.value)}
-          />
+            <input
+              aria-label="Secondary Stats"
+              className="text-input"
+              placeholder="Stats (e.g. Haste +220, Crit +110)"
+              value={stats}
+              onChange={(e) => setStats(e.target.value)}
+            />
 
-          <button
-            type="button"
-            id="btn-add-bis-item"
-            className="btn btn-primary"
-            onClick={handleAddItem}
-          >
-            <Plus size={14} /> Add BIS
-          </button>
-        </div>
+            <button
+              type="button"
+              id="btn-add-bis-item"
+              className="btn btn-primary"
+              onClick={handleAddItem}
+            >
+              <Plus size={14} /> Add BIS
+            </button>
+          </div>
+        )}
 
         <div style={{ overflowX: 'auto' }}>
           <table className="bis-slots-table">
@@ -416,6 +503,7 @@ export function BisGearManager({
                       <input
                         type="checkbox"
                         checked={item.acquired}
+                        disabled={!perms.canToggleLootAndParty}
                         onChange={() =>
                           activeChar &&
                           activeSet &&
@@ -450,23 +538,25 @@ export function BisGearManager({
                       {item.stats}
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        title="Remove item"
-                        onClick={() =>
-                          activeChar &&
-                          activeSet &&
-                          onDeleteBisItem(
-                            member.id,
-                            activeChar.id,
-                            activeSet.id,
-                            item.id
-                          )
-                        }
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {perms.canEditBuilds && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          title="Remove item"
+                          onClick={() =>
+                            activeChar &&
+                            activeSet &&
+                            onDeleteBisItem(
+                              member.id,
+                              activeChar.id,
+                              activeSet.id,
+                              item.id
+                            )
+                          }
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

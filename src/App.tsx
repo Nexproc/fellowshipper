@@ -2,12 +2,15 @@ import {
   Check,
   Compass,
   Copy,
+  KeyRound,
   ListChecks,
   RotateCcw,
   Shield,
   Trophy,
+  UserCheck,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AuthAccountModal } from './components/AuthAccountModal';
 import { BisGearManager } from './components/BisGearManager';
 import { EternalScoreView } from './components/EternalScoreView';
 import { PartyRosterBar } from './components/PartyRosterBar';
@@ -15,11 +18,19 @@ import { PunchListSplash } from './components/PunchListSplash';
 import { RoutePlannerView } from './components/RoutePlannerView';
 import { BUILT_IN_ROUTES, DUNGEONS } from './domain/catalog';
 import {
+  claimMemberSlot,
+  evaluateMemberPermissions,
+  releaseMemberSlot,
+  resolveMemberIdForUser,
+  type OwnershipContext,
+} from './domain/ownership';
+import {
   computeDungeonPunchList,
   resolveRoutesForDungeon,
   selectBestRoute,
 } from './domain/punchList';
 import type { BisItemEntry, BossVariant, HeroId, RoutePlan } from './domain/types';
+import { useFirebaseAuth } from './services/authService';
 import { useCombatLogWatcher } from './services/combatLogWatcher';
 import { usePartyRoom } from './services/partySyncClient';
 
@@ -42,19 +53,42 @@ export function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('punch-list');
   const [roomId, setRoomId] = useState<string>(readInitialRoom);
   const [roomDraft, setRoomDraft] = useState<string>(roomId);
-  const [myMemberId, setMyMemberId] = useState<string>(readInitialIdentity);
+  const [manualMemberId, setManualMemberId] = useState<string>(readInitialIdentity);
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  const auth = useFirebaseAuth();
 
   const {
     state,
     online,
     status,
+    syncBackend,
+    syncError,
+    clearSyncError,
     setIsWatchingLogs,
     commitState,
     sendPing,
     ingestCombatLines,
     resetRoomToSeed,
-  } = usePartyRoom(roomId, myMemberId);
+  } = usePartyRoom(roomId, manualMemberId, auth.user);
+
+  const ownedMemberId = useMemo(
+    () => resolveMemberIdForUser(state.members, auth.user?.uid),
+    [state.members, auth.user?.uid]
+  );
+
+  const myMemberId = ownedMemberId ?? manualMemberId;
+
+  const ownershipCtx: OwnershipContext = useMemo(
+    () => ({
+      authEnforced: auth.isFirebaseConfigured,
+      currentUser: auth.user,
+      leadMemberId: state.leadMemberId,
+      members: state.members,
+    }),
+    [auth.isFirebaseConfigured, auth.user, state.leadMemberId, state.members]
+  );
 
   const watcher = useCombatLogWatcher(ingestCombatLines, setIsWatchingLogs);
 
@@ -106,6 +140,43 @@ export function App() {
     window.setTimeout(() => setCopiedInvite(false), 1800);
   };
 
+  const handleClaimMember = (memberId: string) => {
+    const user = auth.user;
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+    setManualMemberId(memberId);
+    commitState((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.id === memberId ? claimMemberSlot(m, user) : m
+      ),
+    }));
+  };
+
+  const handleReleaseMember = (memberId: string) => {
+    const uid = auth.user?.uid;
+    if (!uid) return;
+    commitState((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.id === memberId ? releaseMemberSlot(m, uid) : m
+      ),
+    }));
+  };
+
+  const handleToggleAllowLeadLoot = (memberId: string) => {
+    commitState((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.id === memberId
+          ? { ...m, allowPartyLeadLootCheck: !(m.allowPartyLeadLootCheck ?? true) }
+          : m
+      ),
+    }));
+  };
+
   const syncDungeonAndVariant = (
     dungeonSlug: string,
     preferredVariant?: BossVariant,
@@ -132,6 +203,15 @@ export function App() {
     bisSetId: string,
     itemId: string
   ) => {
+    const target = state.members.find((m) => m.id === memberId);
+    if (target) {
+      const perms = evaluateMemberPermissions(target, ownershipCtx);
+      if (!perms.canToggleLootAndParty) {
+        setAuthModalOpen(true);
+        return;
+      }
+    }
+
     commitState((prev) => ({
       ...prev,
       members: prev.members.map((m) =>
@@ -295,6 +375,11 @@ export function App() {
           displayName,
           inParty: false,
           activeCharacterId: charId,
+          ownerUid: auth.user?.uid ?? null,
+          ownerDisplayName: auth.user?.displayName ?? null,
+          ownerProvider: auth.user?.provider ?? null,
+          ownerPhotoUrl: auth.user?.photoUrl ?? null,
+          allowPartyLeadLootCheck: true,
           characters: [
             {
               id: charId,
@@ -408,7 +493,9 @@ export function App() {
               }}
             />
             <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-              {status === 'connected' ? `${Math.max(1, online.length)} online` : 'PWA'}
+              {status === 'connected'
+                ? `${Math.max(1, online.length)} ${syncBackend === 'firebase' ? 'GCP' : 'online'}`
+                : 'PWA'}
             </span>
           </div>
 
@@ -423,19 +510,58 @@ export function App() {
             {copiedInvite ? 'Copied' : 'Invite'}
           </button>
 
-          <select
-            id="select-my-identity"
-            aria-label="Active Player Profile"
-            className="select-control"
-            value={myMemberId}
-            onChange={(e) => setMyMemberId(e.target.value)}
-          >
-            {state.members.map((m) => (
-              <option key={m.id} value={m.id}>
-                Profile: {m.displayName}
-              </option>
-            ))}
-          </select>
+          {!auth.isFirebaseConfigured ? (
+            <>
+              <select
+                id="select-my-identity"
+                aria-label="Active Player Profile"
+                className="select-control"
+                value={myMemberId}
+                onChange={(e) => setManualMemberId(e.target.value)}
+              >
+                {state.members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    Profile: {m.displayName}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                id="btn-open-cloud-auth"
+                className="btn btn-sm"
+                onClick={() => setAuthModalOpen(true)}
+                title="Configure GCP Firebase Google & Discord Login"
+              >
+                <KeyRound size={13} /> GCP Auth
+              </button>
+            </>
+          ) : auth.user ? (
+            <button
+              type="button"
+              id="btn-open-account"
+              className="btn btn-sm"
+              onClick={() => setAuthModalOpen(true)}
+              title="Manage account & claimed character slot"
+            >
+              <UserCheck size={13} style={{ color: 'var(--jade-400)' }} />
+              {auth.user.displayName}
+              {ownedMemberId
+                ? ` · ${
+                    state.members.find((m) => m.id === ownedMemberId)?.displayName ??
+                    ownedMemberId
+                  }`
+                : ' · Claim Slot'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              id="btn-sign-in-topbar"
+              className="btn btn-primary btn-sm"
+              onClick={() => setAuthModalOpen(true)}
+            >
+              <KeyRound size={13} /> Sign In (Google / Discord)
+            </button>
+          )}
 
           <button
             type="button"
@@ -449,11 +575,51 @@ export function App() {
         </div>
       </header>
 
+      {syncError && (
+        <div
+          style={{
+            margin: '8px 20px 0',
+            padding: '8px 14px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'rgba(245, 158, 11, 0.14)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.8rem',
+          }}
+        >
+          <span>{syncError}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {auth.isFirebaseConfigured && !auth.user && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  clearSyncError();
+                  setAuthModalOpen(true);
+                }}
+              >
+                Sign In
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={clearSyncError}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <PartyRosterBar
         members={state.members}
         leadMemberId={state.leadMemberId}
         myMemberId={myMemberId}
         online={online}
+        ownershipCtx={ownershipCtx}
         onToggleInParty={(memberId) =>
           commitState((prev) => ({
             ...prev,
@@ -543,6 +709,9 @@ export function App() {
           <BisGearManager
             members={state.members}
             initialMemberId={myMemberId}
+            ownershipCtx={ownershipCtx}
+            onClaimMember={handleClaimMember}
+            onOpenAuthModal={() => setAuthModalOpen(true)}
             onToggleAcquired={toggleItemAcquired}
             onAddBisItem={addBisItem}
             onDeleteBisItem={deleteBisItem}
@@ -611,6 +780,17 @@ export function App() {
           />
         )}
       </main>
+
+      <AuthAccountModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        auth={auth}
+        members={state.members}
+        ownershipCtx={ownershipCtx}
+        onClaimMember={handleClaimMember}
+        onReleaseMember={handleReleaseMember}
+        onToggleAllowLeadLoot={handleToggleAllowLeadLoot}
+      />
     </div>
   );
 }

@@ -114,12 +114,29 @@ export interface CharacterProfile {
   bisSets: BisSet[];
 }
 
+export type AuthProviderKind = 'google' | 'discord' | 'anonymous' | 'oidc';
+
+export interface AuthUserInfo {
+  uid: string;
+  displayName: string;
+  email: string | null;
+  photoUrl: string | null;
+  provider: AuthProviderKind;
+}
+
 export interface MemberProfile {
   id: string;
   displayName: string;
   inParty: boolean;
   activeCharacterId: string;
   characters: CharacterProfile[];
+  /** Firebase Auth UID that owns this roster profile (null/undefined until claimed) */
+  ownerUid?: string | null;
+  ownerDisplayName?: string | null;
+  ownerProvider?: AuthProviderKind | null;
+  ownerPhotoUrl?: string | null;
+  /** When true, the current Party Lead can also check off BIS drops during a run */
+  allowPartyLeadLootCheck?: boolean;
 }
 
 export interface EternalChecklistRow {

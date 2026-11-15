@@ -141,3 +141,95 @@ describe('Fellowship CombatLog Stream Parser & Auto-Route Reducer', () => {
     expect(afterReturn.nextRun.status).toBe('idle');
   });
 });
+
+describe('GCP Firebase Account Ownership & Per-Character Permissions', () => {
+  it('enforces owner-only character/BIS edits while allowing opt-in Party Lead loot checks', async () => {
+    const {
+      claimMemberSlot,
+      evaluateMemberPermissions,
+      releaseMemberSlot,
+      resolveMemberIdForUser,
+    } = await import('../ownership');
+
+    const duncanUser = {
+      uid: 'discord-uid-duncan',
+      displayName: 'Duncan#1337',
+      email: 'duncan@example.com',
+      photoUrl: null,
+      provider: 'discord' as const,
+    };
+
+    const nickLeadUser = {
+      uid: 'google-uid-nick',
+      displayName: 'Nick',
+      email: 'nick@example.com',
+      photoUrl: null,
+      provider: 'google' as const,
+    };
+
+    const tingUser = {
+      uid: 'google-uid-ting',
+      displayName: 'Ting',
+      email: 'ting@example.com',
+      photoUrl: null,
+      provider: 'google' as const,
+    };
+
+    const members = INITIAL_MEMBERS.map((m) => {
+      if (m.id === 'duncan') return claimMemberSlot(m, duncanUser);
+      if (m.id === 'nick') return claimMemberSlot(m, nickLeadUser);
+      return m;
+    });
+
+    expect(resolveMemberIdForUser(members, 'discord-uid-duncan')).toBe('duncan');
+    expect(resolveMemberIdForUser(members, 'google-uid-ting')).toBeNull();
+
+    const duncanSlot = members.find((m) => m.id === 'duncan')!;
+    const andyUnclaimedSlot = members.find((m) => m.id === 'andy')!;
+
+    // 1. Duncan inspecting his own slot -> full edit permissions
+    const ownerPerms = evaluateMemberPermissions(duncanSlot, {
+      authEnforced: true,
+      currentUser: duncanUser,
+      leadMemberId: 'nick',
+      members,
+    });
+    expect(ownerPerms.canEditBuilds).toBe(true);
+    expect(ownerPerms.canToggleLootAndParty).toBe(true);
+    expect(ownerPerms.canReleaseClaim).toBe(true);
+
+    // 2. Ting (not lead, not owner) inspecting Duncan's slot -> view-only
+    const peerPerms = evaluateMemberPermissions(duncanSlot, {
+      authEnforced: true,
+      currentUser: tingUser,
+      leadMemberId: 'nick',
+      members,
+    });
+    expect(peerPerms.canEditBuilds).toBe(false);
+    expect(peerPerms.canToggleLootAndParty).toBe(false);
+
+    // 3. Nick (Party Lead) inspecting Duncan's slot -> cannot edit builds, CAN check off loot drops
+    const leadPerms = evaluateMemberPermissions(duncanSlot, {
+      authEnforced: true,
+      currentUser: nickLeadUser,
+      leadMemberId: 'nick',
+      members,
+    });
+    expect(leadPerms.canEditBuilds).toBe(false);
+    expect(leadPerms.canToggleLootAndParty).toBe(true);
+
+    // 4. Ting inspecting Andy's unclaimed slot -> can claim
+    const unclaimedPerms = evaluateMemberPermissions(andyUnclaimedSlot, {
+      authEnforced: true,
+      currentUser: tingUser,
+      leadMemberId: 'nick',
+      members,
+    });
+    expect(unclaimedPerms.canClaim).toBe(true);
+
+    // 5. Non-owner cannot release Duncan's slot; Duncan can release his own slot
+    expect(releaseMemberSlot(duncanSlot, tingUser.uid).ownerUid).toBe(duncanUser.uid);
+    expect(releaseMemberSlot(duncanSlot, duncanUser.uid).ownerUid).toBeNull();
+  });
+});
+

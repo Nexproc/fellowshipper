@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Optional: to hard-restrict the entire database to your exact 4 accounts,
+    // replace `return true;` with `return request.auth.uid in ['uid1', 'uid2', 'uid3', 'uid4'];`
+    function isAllowedPartyAccount() {
+      return isSignedIn();
+    }
+
+    function isRoomLead(roomId) {
+      let roomData = get(/databases/$(database)/documents/rooms/$(roomId)).data;
+      let leadId = roomData.leadMemberId;
+      let leadDoc = get(/databases/$(database)/documents/rooms/$(roomId)/members/$(leadId)).data;
+      return isSignedIn() && leadDoc.ownerUid == request.auth.uid;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isAllowedPartyAccount();
+      allow create, update: if isAllowedPartyAccount()
+        && request.resource.data.roomId == roomId;
+      allow delete: if false;
+
+      match /members/{memberId} {
+        allow read: if isAllowedPartyAccount();
+
+        // Initial seed creation or creating a new roster slot
+        allow create: if isAllowedPartyAccount()
+          && request.resource.data.id == memberId
+          && (
+            !('ownerUid' in request.resource.data)
+            || request.resource.data.ownerUid == null
+            || request.resource.data.ownerUid == request.auth.uid
+          );
+
+        allow update: if isAllowedPartyAccount()
+          && request.resource.data.id == memberId
+          && (
+            // Case 1: Unclaimed slot being claimed (or pre-claim loot/party toggle)
+            (
+              (!('ownerUid' in resource.data) || resource.data.ownerUid == null)
+              && (
+                !('ownerUid' in request.resource.data)
+                || request.resource.data.ownerUid == null
+                || request.resource.data.ownerUid == request.auth.uid
+              )
+            )
+            // Case 2: Slot owner managing their characters, BIS sets, or releasing claim
+            || (
+              resource.data.ownerUid == request.auth.uid
+              && (
+                request.resource.data.ownerUid == request.auth.uid
+                || request.resource.data.ownerUid == null
+              )
+            )
+            // Case 3: Party Lead checking off loot / party status when owner opted in
+            || (
+              resource.data.allowPartyLeadLootCheck == true
+              && isRoomLead(roomId)
+              && request.resource.data.ownerUid == resource.data.ownerUid
+              && request.resource.data.displayName == resource.data.displayName
+              && request.resource.data.activeCharacterId == resource.data.activeCharacterId
+            )
+          );
+
+        allow delete: if false;
+      }
+    }
+  }
+}
