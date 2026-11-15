@@ -65,6 +65,7 @@ export interface DungeonDefinition {
   slug: string;
   name: string;
   category: DungeonCategory;
+  mapImageUrl: string;
   bosses: string[];
   killScoreTarget: number;
   targetSeconds: number;

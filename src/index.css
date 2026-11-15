@@ -956,25 +956,21 @@ a:hover {
   .bis-add-item-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .method-embed-frame-wrap {
-    height: 440px;
-  }
-  .method-embed-frame-wrap.is-compact {
-    height: 400px;
-  }
-  .method-embed-frame-wrap.is-tall {
-    height: 74vh;
+  .tactical-canvas-wrap.is-tall {
+    aspect-ratio: auto;
+    height: 62vh;
   }
 }
 
-/* Embedded Method.gg Route Planner */
+/* Native Method.gg Stitched Dungeon Map & Synced Route Bar */
 .method-embed-shell {
   display: flex;
   flex-direction: column;
   width: 100%;
 }
 
-.method-embed-toolbar {
+.method-embed-toolbar,
+.method-route-bar {
   padding: 9px 14px;
   background: var(--bg-canvas);
   border-bottom: 1px solid var(--border-subtle);
@@ -986,33 +982,56 @@ a:hover {
 }
 
 .method-embed-modes,
-.method-embed-actions {
+.method-embed-actions,
+.method-route-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.method-embed-frame-wrap {
+.method-route-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.method-route-code {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.tactical-canvas-wrap.is-tall {
+  aspect-ratio: 16 / 12.5;
+}
+
+.tactical-canvas-wrap.is-zoomed {
+  touch-action: none;
+}
+
+.tactical-canvas-wrap.is-zoomed .tactical-svg {
+  cursor: grab;
+}
+
+.tactical-pan-stage {
   position: relative;
   width: 100%;
-  height: 580px;
-  background: hsl(216 24% 7.5%);
-  border-bottom: 1px solid var(--border-subtle);
+  height: 100%;
+  transform-origin: center center;
+  transition: transform 120ms ease-out;
 }
 
-.method-embed-frame-wrap.is-compact {
-  height: 470px;
-}
-
-.method-embed-frame-wrap.is-tall {
-  height: 780px;
-}
-
-.method-embed-iframe {
+.tactical-method-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  border: 0;
-  display: block;
-  background: hsl(216 24% 7.5%);
+  object-fit: cover;
+  filter: brightness(0.88) contrast(1.06);
+  pointer-events: none;
+}
+
+.tactical-pan-stage .tactical-svg {
+  position: relative;
+  z-index: 2;
 }

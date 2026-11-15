@@ -103,6 +103,7 @@ export function useFirebaseAuth(): AuthController {
     if (!services) return;
     setAuthError(null);
     const provider = new OAuthProvider(services.discordProviderId);
+    provider.addScope('openid');
     provider.addScope('identify');
     provider.addScope('email');
     try {
