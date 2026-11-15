@@ -1,0 +1,17 @@
+{
+  "name": "Fellowshipper — Party Routes, Live Combat Radar & BIS Punch List",
+  "short_name": "Fellowshipper",
+  "description": "Synchronized 4-player dungeon route planner, live CombatLogs radar, and BIS gear punch list for Fellowship.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1217",
+  "theme_color": "#13171d",
+  "icons": [
+    {
+      "src": "/fellowshipper-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

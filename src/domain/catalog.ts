@@ -1,0 +1,644 @@
+import type {
+  DungeonDefinition,
+  EternalChecklistRow,
+  GearSlot,
+  HeroDefinition,
+  LiveRunState,
+  MemberProfile,
+  PartySyncState,
+  PullNode,
+  RoutePlan,
+} from './types';
+
+export const GEAR_SLOTS: readonly GearSlot[] = [
+  'Head',
+  'Shoulders',
+  'Chest',
+  'Wrists',
+  'Hands',
+  'Back',
+  'Legs',
+  'Feet',
+  'Neck',
+  'Ring 1',
+  'Ring 2',
+  'Relic 1',
+  'Relic 2',
+  'Weapon',
+] as const;
+
+export const HEROES: readonly HeroDefinition[] = [
+  { id: 'helena', name: 'Helena', role: 'Tank', archetype: 'Warmaster Shieldbearer', accentHsl: '198 68% 58%' },
+  { id: 'meiko', name: 'Meiko', role: 'Tank', archetype: 'Twin-Soul Martial Monk', accentHsl: '175 58% 50%' },
+  { id: 'xavian', name: 'Xavian', role: 'Tank', archetype: 'Radiant Aegis Vanguard', accentHsl: '44 84% 62%' },
+  { id: 'sylvie', name: 'Sylvie', role: 'Healer', archetype: 'Fluttercall Feyweaver', accentHsl: '152 56% 52%' },
+  { id: 'vigour', name: 'Vigour', role: 'Healer', archetype: 'Runic Lightforger', accentHsl: '38 86% 60%' },
+  { id: 'aeona', name: 'Aeona', role: 'Healer', archetype: 'Chrono-Atonement Seer', accentHsl: '188 64% 56%' },
+  { id: 'elarion', name: 'Elarion', role: 'DPS', archetype: 'Starstriker Bowmaster', accentHsl: '138 52% 54%' },
+  { id: 'mara', name: 'Mara', role: 'DPS', archetype: 'Shadowblade Assassin', accentHsl: '12 76% 58%' },
+  { id: 'rime', name: 'Rime', role: 'DPS', archetype: 'Winterglass Frostweaver', accentHsl: '204 78% 64%' },
+  { id: 'ardeos', name: 'Ardeos', role: 'DPS', archetype: 'Pyromancer Conjuror', accentHsl: '22 86% 58%' },
+  { id: 'tariq', name: 'Tariq', role: 'DPS', archetype: 'Tempest Hammercaller', accentHsl: '32 76% 56%' },
+  { id: 'gunde', name: 'Gunde', role: 'DPS', archetype: 'Heskyr Berserker', accentHsl: '4 72% 56%' },
+] as const;
+
+export const AFFIX_CATALOG: Record<number, { name: string; kind: string }> = {
+  2: { name: "Sahril's Madness", kind: 'Ascension' },
+  3: { name: "Elheryn's Exile", kind: 'Ascension' },
+  4: { name: "Vayr's Legacy", kind: 'Ascension' },
+  5: { name: "Asha's Dilemma", kind: 'Ascension' },
+  6: { name: "Asha's Regret", kind: 'Ascension' },
+  8: { name: 'Blood Shards', kind: 'Curse' },
+  9: { name: 'Carnage', kind: 'Curse' },
+  10: { name: 'Challenge', kind: 'Curse' },
+  11: { name: 'Binding Ice', kind: 'Curse' },
+  12: { name: 'Empowered Minions', kind: 'Curse' },
+  13: { name: 'Malevolent Shade', kind: 'Curse' },
+  14: { name: 'Meteor Rain', kind: 'Curse' },
+  15: { name: 'Stone Skin', kind: 'Curse' },
+  16: { name: 'Ultimatum', kind: 'Curse' },
+  18: { name: 'Promoted Enemies', kind: 'Implicit' },
+  19: { name: "Shadow Lord's Trial", kind: 'Curse' },
+  20: { name: 'Ghorn the Avalanche', kind: 'Emissary' },
+  21: { name: 'Krumbug the Naughty', kind: 'Emissary' },
+  22: { name: 'Eira the White Witch', kind: 'Emissary' },
+  23: { name: "Pathfinder's Guidance", kind: 'Ascension' },
+  24: { name: 'Anomalous Orbs', kind: 'Curse' },
+  25: { name: 'Storm Shield', kind: 'Curse' },
+  27: { name: 'Truesight', kind: 'Curse' },
+};
+
+function makeAdventurePulls(bosses: string[], killTarget: number): PullNode[] {
+  const perPack = Math.round(killTarget / 5);
+  const pulls: PullNode[] = [
+    { index: 1, label: 'Entry Vanguard + Caster Pack', x: 14, y: 76, killScore: perPack, kind: 'pack', notes: 'Group & kick primary caster' },
+    { index: 2, label: 'Courtyard Double Pull', x: 31, y: 58, killScore: perPack, kind: 'pack', notes: 'Chain into patrol once first kick lands' },
+    { index: 3, label: 'Emissary Shrine Pocket', x: 49, y: 36, killScore: 20, kind: 'miniboss', notes: 'Ghorn (+20s) / Krumbug (+60s) / Eira (+90s) rotation' },
+    { index: 4, label: 'Bridge / Gatekeepers', x: 66, y: 52, killScore: perPack * 2 - 10, kind: 'pack', notes: 'Save Spirit burst for high-HP lieutenant' },
+  ];
+  if (bosses.length >= 2) {
+    pulls.push({ index: 5, label: bosses[0], x: 75, y: 28, killScore: 0, kind: 'boss', notes: 'Mid-instance boss encounter' });
+    pulls.push({ index: 6, label: 'Sanctum Approach Pack', x: 84, y: 54, killScore: Math.max(10, killTarget - (perPack * 4 + 10)), kind: 'pack', notes: 'Finish 100% kill score before final arena' });
+    pulls.push({ index: 7, label: bosses[1], x: 90, y: 24, killScore: 0, kind: 'boss', notes: 'Final boss — commit Spirit & relics' });
+  } else {
+    pulls.push({ index: 5, label: 'Sanctum Stairs Pack', x: 79, y: 38, killScore: Math.max(12, killTarget - (perPack * 4 + 10)), kind: 'pack', notes: 'Top off 100% kill count before boss' });
+    pulls.push({ index: 6, label: bosses[0] ?? 'Final Boss', x: 90, y: 22, killScore: 0, kind: 'boss', notes: 'Final boss — commit Spirit & relics' });
+  }
+  return pulls;
+}
+
+function makeCapstonePulls(bosses: string[], killTarget: number): PullNode[] {
+  const chunk = Math.round((killTarget - 20) / 6);
+  return [
+    { index: 1, label: 'Outer Gate Triple Pack', x: 11, y: 80, killScore: chunk, kind: 'pack', notes: 'Pop opener cooldowns + Spirit on pull' },
+    { index: 2, label: 'Rampart Patrol + Sentinels', x: 24, y: 62, killScore: chunk, kind: 'pack', notes: 'Line-of-sight ranged casters behind pillar' },
+    { index: 3, label: bosses[0] ?? 'Boss 1', x: 35, y: 32, killScore: 0, kind: 'boss', notes: 'First Capstone Boss' },
+    { index: 4, label: 'Inner Ward + Emissary Pocket', x: 48, y: 54, killScore: 20 + chunk, kind: 'miniboss', notes: 'Clear Emissary miniboss for timer refund & boon' },
+    { index: 5, label: 'Gallery Trash Cleave', x: 60, y: 70, killScore: chunk, kind: 'pack', notes: 'Watch frontal cleaves; stun priority channeler' },
+    { index: 6, label: bosses[1] ?? 'Boss 2', x: 71, y: 34, killScore: 0, kind: 'boss', notes: 'Second Capstone Boss' },
+    { index: 7, label: 'Citadel Ascent Gauntlet', x: 82, y: 58, killScore: Math.max(15, killTarget - (20 + chunk * 4)), kind: 'pack', notes: 'Verify 100% Kill Score before final threshold' },
+    { index: 8, label: bosses[2] ?? 'Final Boss', x: 91, y: 20, killScore: 0, kind: 'boss', notes: 'Final Capstone Boss — full Spirit burn' },
+  ];
+}
+
+export const DUNGEONS: readonly DungeonDefinition[] = [
+  {
+    zoneId: 23,
+    slug: 'ransack-of-drakheim',
+    name: 'Ransack of Drakheim',
+    category: 'Dungeon',
+    bosses: ['Chilgar the Drowned', 'Fodir Kaldur', 'Auga Handhafi the Blind'],
+    killScoreTarget: 260,
+    targetSeconds: 1740,
+    everyXLevels: 4,
+    firstBoss: 'Ghorn',
+    firstLevel: 4,
+    worldBounds: { minX: -2000, maxX: 18500, minY: -7000, maxY: 54000 },
+    defaultPulls: makeCapstonePulls(['Chilgar the Drowned', 'Fodir Kaldur', 'Auga Handhafi the Blind'], 260),
+  },
+  {
+    zoneId: 12,
+    slug: 'stormwatch',
+    name: 'Stormwatch',
+    category: 'Adventure',
+    bosses: ['Warlord Brogg'],
+    killScoreTarget: 155,
+    targetSeconds: 848,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Krumbug',
+    firstLevel: 3,
+    worldBounds: { minX: -4500, maxX: 14500, minY: -5000, maxY: 22000 },
+    defaultPulls: makeAdventurePulls(['Warlord Brogg'], 155),
+  },
+  {
+    zoneId: 6,
+    slug: 'empyrean-sands',
+    name: 'Empyrean Sands',
+    category: 'Adventure',
+    bosses: ['Sin-Magir'],
+    killScoreTarget: 130,
+    targetSeconds: 744,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Eira',
+    firstLevel: 1,
+    worldBounds: { minX: -6000, maxX: 14000, minY: -6000, maxY: 18000 },
+    defaultPulls: makeAdventurePulls(['Sin-Magir'], 130),
+  },
+  {
+    zoneId: 21,
+    slug: 'urrak-markets',
+    name: 'Urrak Markets',
+    category: 'Adventure',
+    bosses: ['Drazhul the Fleshbroker', 'Slavetrader Brull'],
+    killScoreTarget: 160,
+    targetSeconds: 781,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Krumbug',
+    firstLevel: 2,
+    worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
+    defaultPulls: makeAdventurePulls(['Drazhul the Fleshbroker', 'Slavetrader Brull'], 160),
+  },
+  {
+    zoneId: 7,
+    slug: 'cithrels-fall',
+    name: "Cithrel's Fall",
+    category: 'Dungeon',
+    bosses: ['Ancient Koros', 'Noor, The Betrayer', 'Cithrel'],
+    killScoreTarget: 188,
+    targetSeconds: 1671,
+    everyXLevels: 4,
+    firstBoss: 'Ghorn',
+    firstLevel: 1,
+    worldBounds: { minX: -8000, maxX: 16000, minY: -8000, maxY: 26000 },
+    defaultPulls: makeCapstonePulls(['Ancient Koros', 'Noor, The Betrayer', 'Cithrel'], 188),
+  },
+  {
+    zoneId: 11,
+    slug: 'everdawn-grove',
+    name: 'Everdawn Grove',
+    category: 'Adventure',
+    bosses: ['Malgut the Fetid', 'Akari the Everdawn Lord'],
+    killScoreTarget: 110,
+    targetSeconds: 708,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Ghorn',
+    firstLevel: 3,
+    worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 18000 },
+    defaultPulls: makeAdventurePulls(['Malgut the Fetid', 'Akari the Everdawn Lord'], 110),
+  },
+  {
+    zoneId: 25,
+    slug: 'godfall-quarry',
+    name: 'Godfall Quarry',
+    category: 'Adventure',
+    bosses: ['Vaerith Vorn', 'Godfall Titan'],
+    killScoreTarget: 130,
+    targetSeconds: 738,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Krumbug',
+    firstLevel: 1,
+    worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 18000 },
+    defaultPulls: makeAdventurePulls(['Vaerith Vorn', 'Godfall Titan'], 130),
+  },
+  {
+    zoneId: 5,
+    slug: 'the-heart-of-tuzari',
+    name: 'The Heart of Tuzari',
+    category: 'Dungeon',
+    bosses: ["Moar'gore, Master of Sacrifice", "Prophet Ez'rath", "Vun'Kahr, the Thorned Maw"],
+    killScoreTarget: 238,
+    targetSeconds: 1485,
+    everyXLevels: 4,
+    firstBoss: 'Krumbug',
+    firstLevel: 2,
+    worldBounds: { minX: -8000, maxX: 18000, minY: -8000, maxY: 28000 },
+    defaultPulls: makeCapstonePulls(["Moar'gore, Master of Sacrifice", "Prophet Ez'rath", "Vun'Kahr, the Thorned Maw"], 238),
+  },
+  {
+    zoneId: 24,
+    slug: 'silken-hollow',
+    name: 'Silken Hollow',
+    category: 'Adventure',
+    bosses: ['Vexira, Mother of Nightmares'],
+    killScoreTarget: 168,
+    targetSeconds: 812,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Ghorn',
+    firstLevel: 1,
+    worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 19000 },
+    defaultPulls: makeAdventurePulls(['Vexira, Mother of Nightmares'], 168),
+  },
+  {
+    zoneId: 13,
+    slug: 'wraithtide-vault',
+    name: 'Wraithtide Vault',
+    category: 'Dungeon',
+    bosses: ['First Mate Marrow', 'Deathless Katrine', "Bael'Aurum"],
+    killScoreTarget: 281,
+    targetSeconds: 1782,
+    everyXLevels: 4,
+    firstBoss: 'Eira',
+    firstLevel: 3,
+    worldBounds: { minX: -8000, maxX: 19000, minY: -8000, maxY: 30000 },
+    defaultPulls: makeCapstonePulls(['First Mate Marrow', 'Deathless Katrine', "Bael'Aurum"], 281),
+  },
+  {
+    zoneId: 8,
+    slug: 'wyrmheart',
+    name: 'Wyrmheart',
+    category: 'Adventure',
+    bosses: ['Apostate Veras'],
+    killScoreTarget: 109,
+    targetSeconds: 806,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Eira',
+    firstLevel: 2,
+    worldBounds: { minX: -5000, maxX: 14000, minY: -5000, maxY: 18000 },
+    defaultPulls: makeAdventurePulls(['Apostate Veras'], 109),
+  },
+  {
+    zoneId: 15,
+    slug: 'sailors-abyss',
+    name: "Sailor's Abyss",
+    category: 'Adventure',
+    bosses: ['Sinthara'],
+    killScoreTarget: 131,
+    targetSeconds: 717,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Ghorn',
+    firstLevel: 2,
+    worldBounds: { minX: -5000, maxX: 14000, minY: -5000, maxY: 18000 },
+    defaultPulls: makeAdventurePulls(['Sinthara'], 131),
+  },
+  {
+    zoneId: 31,
+    slug: 'scryers-peak',
+    name: "Scryer's Peak",
+    category: 'Adventure',
+    bosses: ['Overlord Varux'],
+    killScoreTarget: 180,
+    targetSeconds: 807,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Ghorn',
+    firstLevel: 1,
+    worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
+    defaultPulls: makeAdventurePulls(['Overlord Varux'], 180),
+  },
+  {
+    zoneId: 29,
+    slug: 'ruins-of-regath',
+    name: 'Ruins of Regath',
+    category: 'Adventure',
+    bosses: ['Xurath, Fist of the Warden'],
+    killScoreTarget: 155,
+    targetSeconds: 900,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Eira',
+    firstLevel: 1,
+    worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
+    defaultPulls: makeAdventurePulls(['Xurath, Fist of the Warden'], 155),
+  },
+  {
+    zoneId: 30,
+    slug: 'xul-the-blood-monolith',
+    name: 'Xul, The Blood Monolith',
+    category: 'Pinnacle',
+    bosses: [
+      'Han-Eth, Sentry of Xul',
+      "Vel'korath the Sanctified",
+      "Xul'vorith, Bloodbound Sentinel",
+    ],
+    killScoreTarget: 265,
+    targetSeconds: 1700,
+    everyXLevels: 4,
+    firstBoss: 'Ghorn',
+    firstLevel: 1,
+    worldBounds: { minX: -8000, maxX: 19000, minY: -8000, maxY: 30000 },
+    defaultPulls: makeCapstonePulls(
+      ['Han-Eth, Sentry of Xul', "Vel'korath the Sanctified", "Xul'vorith, Bloodbound Sentinel"],
+      265
+    ),
+  },
+] as const;
+
+/**
+ * Complete library of Method.gg route plans imported directly from
+ * Fellowship Dungeon Sheets (Routes, Xmas Routes, and Spider Mount List tabs).
+ */
+export const BUILT_IN_ROUTES: readonly RoutePlan[] = [
+  // Cithrel's Fall
+  { id: 'cf-reg', dungeonSlug: 'cithrels-fall', variant: 'Regular', label: "Cithrel's Fall — Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/0Y02h7oRFj8RJ3TL', sourceTag: 'Core Routes' },
+  { id: 'cf-ghorn', dungeonSlug: 'cithrels-fall', variant: 'Ghorn', label: "Cithrel's Fall — Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/mnRtosTAOjOYYDjM', sourceTag: 'Core Routes', recommendedLevel: 13 },
+  { id: 'cf-eira', dungeonSlug: 'cithrels-fall', variant: 'Eira', label: "Cithrel's Fall — Eira (+90s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/MfspOJ6zYZF2R6rK', sourceTag: 'Core Routes' },
+  { id: 'cf-eira-xmas', dungeonSlug: 'cithrels-fall', variant: 'Eira', label: "Cithrel's Fall — Eira Alt (Lvl 9)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/qQdyWEyu7eX89TT7', sourceTag: 'Xmas Rotation', recommendedLevel: 9 },
+
+  // Empyrean Sands
+  { id: 'es-reg', dungeonSlug: 'empyrean-sands', variant: 'Regular', label: 'Empyrean Sands — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/EEOPsMakjrYBdDb0', sourceTag: 'Core Routes' },
+  { id: 'es-ghorn', dungeonSlug: 'empyrean-sands', variant: 'Ghorn', label: 'Empyrean Sands — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/tg46s1JLdYHQ3Tdz', sourceTag: 'Core Routes', recommendedLevel: 15 },
+  { id: 'es-emp', dungeonSlug: 'empyrean-sands', variant: 'Empowered', label: 'Empyrean Sands — Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/yUSjgfFFqauWaw8E', sourceTag: 'Core Routes' },
+  { id: 'es-eira', dungeonSlug: 'empyrean-sands', variant: 'Eira', label: 'Empyrean Sands — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/TALuZDOJxYRTy7qb', sourceTag: 'Xmas Rotation' },
+  { id: 'es-krumbug', dungeonSlug: 'empyrean-sands', variant: 'Krumbug', label: 'Empyrean Sands — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/QFF3u0FVWjVLN0FB', sourceTag: 'Xmas Rotation' },
+
+  // Everdawn Grove
+  { id: 'eg-reg', dungeonSlug: 'everdawn-grove', variant: 'Regular', label: 'Everdawn Grove — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/vJzNJmTF9ki19v6Q', sourceTag: 'Core Routes' },
+  { id: 'eg-eira', dungeonSlug: 'everdawn-grove', variant: 'Eira', label: 'Everdawn Grove — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/MDrYLS355vMjKkYU', sourceTag: 'Core Routes' },
+  { id: 'eg-eira-xmas', dungeonSlug: 'everdawn-grove', variant: 'Eira', label: 'Everdawn Grove — Eira Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/5OiiDhxqgjm447LX', sourceTag: 'Xmas Rotation' },
+  { id: 'eg-krumbug', dungeonSlug: 'everdawn-grove', variant: 'Krumbug', label: 'Everdawn Grove — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/GeFqtIkn0KGSfm6M', sourceTag: 'Xmas Rotation', recommendedLevel: 16 },
+
+  // Godfall Quarry
+  { id: 'gq-reg', dungeonSlug: 'godfall-quarry', variant: 'Regular', label: 'Godfall Quarry — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/Y3De6MD1gs6LUfQ5', sourceTag: 'Core Routes' },
+  { id: 'gq-ghorn', dungeonSlug: 'godfall-quarry', variant: 'Ghorn', label: 'Godfall Quarry — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/yXVgkaBPBXZpv6S5', sourceTag: 'Core Routes' },
+  { id: 'gq-krumbug', dungeonSlug: 'godfall-quarry', variant: 'Krumbug', label: 'Godfall Quarry — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/VXnNTz8KAdfoP1QJ', sourceTag: 'Xmas Rotation' },
+  { id: 'gq-eira', dungeonSlug: 'godfall-quarry', variant: 'Eira', label: 'Godfall Quarry — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/UL1Py2fYPLuYVLAM', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
+
+  // The Heart of Tuzari
+  { id: 'hot-reg', dungeonSlug: 'the-heart-of-tuzari', variant: 'Regular', label: 'Heart of Tuzari — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/5weN8plJLwL0b18M', sourceTag: 'Core Routes' },
+  { id: 'hot-ghorn', dungeonSlug: 'the-heart-of-tuzari', variant: 'Ghorn', label: 'Heart of Tuzari — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/2VhDa0K260ox7iWG', sourceTag: 'Core Routes' },
+  { id: 'hot-eira', dungeonSlug: 'the-heart-of-tuzari', variant: 'Eira', label: 'Heart of Tuzari — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/wdazBWxDZfAElzoG', sourceTag: 'Core Routes' },
+  { id: 'hot-ghorn-xmas', dungeonSlug: 'the-heart-of-tuzari', variant: 'Ghorn', label: 'Heart of Tuzari — Ghorn Alt (Lvl 10)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/6azY0h7RoBC8xUbK', sourceTag: 'Xmas Rotation', recommendedLevel: 10 },
+  { id: 'hot-krumbug', dungeonSlug: 'the-heart-of-tuzari', variant: 'Krumbug', label: 'Heart of Tuzari — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/MSVsbFU94GBBGa4C', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
+  { id: 'hot-eira-xmas', dungeonSlug: 'the-heart-of-tuzari', variant: 'Eira', label: 'Heart of Tuzari — Eira Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/A7bmS4kv0IsJ3ySO', sourceTag: 'Xmas Rotation' },
+
+  // Ransack of Drakheim
+  { id: 'rod-reg', dungeonSlug: 'ransack-of-drakheim', variant: 'Regular', label: 'Ransack of Drakheim — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/IoClnf0L2l1XklVd', sourceTag: 'Core Routes' },
+  { id: 'rod-ghorn', dungeonSlug: 'ransack-of-drakheim', variant: 'Ghorn', label: 'Ransack of Drakheim — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RtcCdsCwNIlcSckl', sourceTag: 'Core Routes', recommendedLevel: 16 },
+  { id: 'rod-eira', dungeonSlug: 'ransack-of-drakheim', variant: 'Eira', label: 'Ransack of Drakheim — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/dEhek8djBZh3wEAX', sourceTag: 'Core Routes' },
+  { id: 'rod-krumbug', dungeonSlug: 'ransack-of-drakheim', variant: 'Krumbug', label: 'Ransack of Drakheim — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RnkM9APwOjqPHQIP', sourceTag: 'Xmas Rotation', recommendedLevel: 20 },
+  { id: 'rod-eira-xmas', dungeonSlug: 'ransack-of-drakheim', variant: 'Eira', label: 'Ransack of Drakheim — Eira Alt (Lvl 12)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/4mj0R1QSyUNYdKnF', sourceTag: 'Xmas Rotation', recommendedLevel: 12 },
+  { id: 'rod-ghorn-xmas', dungeonSlug: 'ransack-of-drakheim', variant: 'Ghorn', label: 'Ransack of Drakheim — Ghorn Low-Key', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/aUsjTNfh0eumMVuk', sourceTag: 'Xmas Rotation' },
+
+  // Sailor's Abyss
+  { id: 'sa-reg', dungeonSlug: 'sailors-abyss', variant: 'Regular', label: "Sailor's Abyss — Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/WiddqcdUNXfzCsCQ', sourceTag: 'Core Routes' },
+  { id: 'sa-eira', dungeonSlug: 'sailors-abyss', variant: 'Eira', label: "Sailor's Abyss — Eira (+90s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/3rUilILRl1M5QUv7', sourceTag: 'Core Routes' },
+  { id: 'sa-ghorn', dungeonSlug: 'sailors-abyss', variant: 'Ghorn', label: "Sailor's Abyss — Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/jqE7MJ7Wm1Yu5S6a', sourceTag: 'Xmas Rotation' },
+  { id: 'sa-eira-xmas', dungeonSlug: 'sailors-abyss', variant: 'Eira', label: "Sailor's Abyss — Eira Speed", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/6z94bSzGRVmHYvlv', sourceTag: 'Xmas Rotation' },
+  { id: 'sa-krumbug', dungeonSlug: 'sailors-abyss', variant: 'Krumbug', label: "Sailor's Abyss — Krumbug (+60s Bag)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/qwuvGAQB5QbCPVzF', sourceTag: 'Xmas Rotation', recommendedLevel: 15 },
+
+  // Silken Hollow
+  { id: 'sh-reg', dungeonSlug: 'silken-hollow', variant: 'Regular', label: 'Silken Hollow — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/a4jm2OOJucRCK7vk', sourceTag: 'Core Routes' },
+  { id: 'sh-eira', dungeonSlug: 'silken-hollow', variant: 'Eira', label: 'Silken Hollow — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/M7FD4leYIvJ2RHo7', sourceTag: 'Core Routes' },
+  { id: 'sh-krumbug', dungeonSlug: 'silken-hollow', variant: 'Krumbug', label: 'Silken Hollow — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/5tukMKJLSMjyWJGo', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
+
+  // Stormwatch
+  { id: 'sw-reg', dungeonSlug: 'stormwatch', variant: 'Regular', label: 'Stormwatch — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/YIWHe5JCMtWaSRnB', sourceTag: 'Core Routes' },
+  { id: 'sw-eira', dungeonSlug: 'stormwatch', variant: 'Eira', label: 'Stormwatch — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/yEwFYdfADLa8tVER', sourceTag: 'Core Routes', recommendedLevel: 16, notes: 'Sheet note: Consider trading for lvl 14 with Ghorn' },
+  { id: 'sw-ghorn', dungeonSlug: 'stormwatch', variant: 'Ghorn', label: 'Stormwatch — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/7gL4KCbHnPyJg1VU', sourceTag: 'Xmas Rotation', recommendedLevel: 22 },
+  { id: 'sw-krumbug', dungeonSlug: 'stormwatch', variant: 'Krumbug', label: 'Stormwatch — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/UpRhNPgl2WVJE5j8', sourceTag: 'Xmas Rotation' },
+  { id: 'sw-eira-xmas', dungeonSlug: 'stormwatch', variant: 'Eira', label: 'Stormwatch — Eira Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/SBwMMWnw8KBM2Tmy', sourceTag: 'Xmas Rotation' },
+
+  // Urrak Markets
+  { id: 'um-reg', dungeonSlug: 'urrak-markets', variant: 'Regular', label: 'Urrak Markets — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/GEEmZZzwmHwU90yN', sourceTag: 'Core Routes' },
+  { id: 'um-ghorn', dungeonSlug: 'urrak-markets', variant: 'Ghorn', label: 'Urrak Markets — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/Br1xQLCeMACEzVIp', sourceTag: 'Core Routes' },
+  { id: 'um-krumbug', dungeonSlug: 'urrak-markets', variant: 'Krumbug', label: 'Urrak Markets — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/rN5hoCaGt8phd8Q2', sourceTag: 'Xmas Rotation' },
+  { id: 'um-ghorn-xmas', dungeonSlug: 'urrak-markets', variant: 'Ghorn', label: 'Urrak Markets — Ghorn Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/IJlk3VZDOhSro3ZX', sourceTag: 'Xmas Rotation' },
+  { id: 'um-eira', dungeonSlug: 'urrak-markets', variant: 'Eira', label: 'Urrak Markets — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/FndKJ21frabeHTZu', sourceTag: 'Xmas Rotation', recommendedLevel: 15, notes: 'Sheet note: Consider trading for lvl 14 with Ghorn' },
+
+  // Wraithtide Vault
+  { id: 'wv-reg', dungeonSlug: 'wraithtide-vault', variant: 'Regular', label: 'Wraithtide Vault — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/oJPC09srg3rpOafB', sourceTag: 'Core Routes' },
+  { id: 'wv-ghorn', dungeonSlug: 'wraithtide-vault', variant: 'Ghorn', label: 'Wraithtide Vault — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/tcof25h1yZ1vBz99', sourceTag: 'Core Routes' },
+  { id: 'wv-eira', dungeonSlug: 'wraithtide-vault', variant: 'Eira', label: 'Wraithtide Vault — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/fFVpmYWqhmNmXb3M', sourceTag: 'Core Routes', recommendedLevel: 15 },
+  { id: 'wv-ghorn-xmas', dungeonSlug: 'wraithtide-vault', variant: 'Ghorn', label: 'Wraithtide Vault — Ghorn High-Key (Lvl 19)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/bXTELXzjCBo62YUQ', sourceTag: 'Xmas Rotation', recommendedLevel: 19 },
+  { id: 'wv-krumbug', dungeonSlug: 'wraithtide-vault', variant: 'Krumbug', label: 'Wraithtide Vault — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/FKSlEDgeATJE32bN', sourceTag: 'Xmas Rotation', recommendedLevel: 11 },
+
+  // Wyrmheart
+  { id: 'wh-reg', dungeonSlug: 'wyrmheart', variant: 'Regular', label: 'Wyrmheart — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/x8w1h2wE7gso2Aez', sourceTag: 'Core Routes' },
+  { id: 'wh-ghorn', dungeonSlug: 'wyrmheart', variant: 'Ghorn', label: 'Wyrmheart — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/aOKmkuC2d6n5eCLu', sourceTag: 'Core Routes', recommendedLevel: 16 },
+  { id: 'wh-krumbug', dungeonSlug: 'wyrmheart', variant: 'Krumbug', label: 'Wyrmheart — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/R7aDCNMydRMMT91T', sourceTag: 'Xmas Rotation' },
+
+  // Scryer's Peak
+  { id: 'sp-reg', dungeonSlug: 'scryers-peak', variant: 'Regular', label: "Scryer's Peak — Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak/tr7XNnh0RzYouTrC', sourceTag: 'Core Routes' },
+  { id: 'sp-ghorn', dungeonSlug: 'scryers-peak', variant: 'Ghorn', label: "Scryer's Peak — Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak/KhNsmJMtTYRn8CC1', sourceTag: 'Core Routes' },
+
+  // Ruins of Regath
+  { id: 'ror-reg', dungeonSlug: 'ruins-of-regath', variant: 'Regular', label: 'Ruins of Regath — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/FmCCba517PhJwCAr', sourceTag: 'Core Routes' },
+  { id: 'ror-eira', dungeonSlug: 'ruins-of-regath', variant: 'Eira', label: 'Ruins of Regath — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/HBQgaQFlPvulMLRm', sourceTag: 'Core Routes' },
+
+  // Xul, The Blood Monolith
+  { id: 'xul-reg', dungeonSlug: 'xul-the-blood-monolith', variant: 'Regular', label: 'Xul, The Blood Monolith — Pinnacle Route', methodUrl: 'https://www.method.gg/fellowship/route-planner', sourceTag: 'Core Routes' },
+] as const;
+
+/**
+ * Group members, characters, and BIS gear sets seeded from Fellowship Dungeon Sheets
+ * (PS2-Items-Individual + pre-season2 item checklists).
+ */
+export const INITIAL_MEMBERS: MemberProfile[] = [
+  {
+    id: 'nick',
+    displayName: 'Nick',
+    inParty: true,
+    activeCharacterId: 'nick-helena',
+    characters: [
+      {
+        id: 'nick-helena',
+        heroId: 'helena',
+        title: 'Main Tank',
+        activeBisSetId: 'nick-helena-bis',
+        bisSets: [
+          {
+            id: 'nick-helena-bis',
+            name: 'Eternal Push BIS (Haste / Expertise)',
+            gemGuideUrl: 'https://www.fellowsguide.com/s/aFkmeS0m',
+            items: [
+              { id: 'n-1', slot: 'Hands', itemName: 'Chitinous Battlegloves', dungeonSlug: 'silken-hollow', stats: 'Haste +123, Expertise +100', acquired: false, notes: 'Nick Needs This' },
+              { id: 'n-2', slot: 'Ring 2', itemName: "Butcher's Nosering", dungeonSlug: 'urrak-markets', stats: 'Haste +147, Expertise +120', acquired: false },
+              { id: 'n-3', slot: 'Ring 1', itemName: 'Barnacled Signet', dungeonSlug: 'wraithtide-vault', stats: 'Haste +147, Expertise +120', acquired: false },
+              { id: 'n-4', slot: 'Head', itemName: 'Highwinter Helm', dungeonSlug: 'cithrels-fall', stats: 'Haste +234, Expertise +100', acquired: true },
+              { id: 'n-5', slot: 'Chest', itemName: 'Frozen Guardplate', dungeonSlug: 'cithrels-fall', stats: 'Critical Strike +62, Expertise +346', acquired: true },
+              { id: 'n-6', slot: 'Shoulders', itemName: 'Encrusted Mantle', dungeonSlug: 'godfall-quarry', stats: 'Haste +45, Expertise +252', acquired: true },
+              { id: 'n-7', slot: 'Feet', itemName: 'Crystalized Boots', dungeonSlug: 'godfall-quarry', stats: 'Critical Strike +39, Haste +221', acquired: true },
+              { id: 'n-8', slot: 'Wrists', itemName: "Bully's Bloody Bracers", dungeonSlug: 'silken-hollow', stats: 'Haste +84, Expertise +102', acquired: true },
+              { id: 'n-9', slot: 'Back', itemName: 'Godhide Drape', dungeonSlug: 'everdawn-grove', stats: 'Haste +158, Expertise +28', acquired: true },
+              { id: 'n-10', slot: 'Legs', itemName: 'Bloomended Legplates', dungeonSlug: 'the-heart-of-tuzari', stats: 'Haste +315, Expertise +56', acquired: true },
+              { id: 'n-11', slot: 'Neck', itemName: 'Runed Amulet of the Horizon', dungeonSlug: 'any-dungeon', stats: 'Critical Strike +397, Haste +70', acquired: false },
+              { id: 'n-12', slot: 'Weapon', itemName: 'Darkfrost Drakecarver', dungeonSlug: 'any-dungeon', stats: 'Critical Strike +148, Haste +181', acquired: false },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'nick-xavian',
+        heroId: 'xavian',
+        title: 'Alt Shield Tank',
+        activeBisSetId: 'nick-xavian-bis',
+        bisSets: [
+          {
+            id: 'nick-xavian-bis',
+            name: 'Season 3 Shieldweaver BIS',
+            items: [
+              { id: 'nx-1', slot: 'Weapon', itemName: 'Sunforged Bastion Blade', dungeonSlug: 'scryers-peak', stats: 'Haste +190, Spirit +210', acquired: false },
+              { id: 'nx-2', slot: 'Chest', itemName: 'Regath Sanctified Cuirass', dungeonSlug: 'ruins-of-regath', stats: 'Haste +240, Expertise +165', acquired: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'andy',
+    displayName: 'Andy',
+    inParty: true,
+    activeCharacterId: 'andy-sylvie',
+    characters: [
+      {
+        id: 'andy-sylvie',
+        heroId: 'sylvie',
+        title: 'Main Healer',
+        activeBisSetId: 'andy-sylvie-bis',
+        bisSets: [
+          {
+            id: 'andy-sylvie-bis',
+            name: 'Crit / Haste Throughput BIS',
+            items: [
+              { id: 'a-1', slot: 'Shoulders', itemName: 'Mantle of the Dragonpriest', dungeonSlug: 'cithrels-fall', stats: 'Critical Strike +252, Haste +45', acquired: false },
+              { id: 'a-2', slot: 'Legs', itemName: 'Looted Leggings', dungeonSlug: 'stormwatch', stats: 'Critical Strike +111, Haste +259', acquired: false },
+              { id: 'a-3', slot: 'Ring 1', itemName: 'Arsonist Seal', dungeonSlug: 'stormwatch', stats: 'Critical Strike +147, Haste +120', acquired: false },
+              { id: 'a-4', slot: 'Head', itemName: 'Dusted Veil', dungeonSlug: 'empyrean-sands', stats: 'Critical Strike +284, Haste +50', acquired: false },
+              { id: 'a-5', slot: 'Wrists', itemName: "Tracker's Bands", dungeonSlug: 'everdawn-grove', stats: 'Critical Strike +84, Haste +102', acquired: false },
+              { id: 'a-6', slot: 'Chest', itemName: 'Frost-Speckled Robe', dungeonSlug: 'cithrels-fall', stats: 'Critical Strike +184, Haste +224', acquired: true },
+              { id: 'a-7', slot: 'Hands', itemName: 'Brined Leather Gloves', dungeonSlug: 'wraithtide-vault', stats: 'Haste +189, Spirit +34', acquired: true },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'andy-rime',
+        heroId: 'rime',
+        title: 'Alt Caster DPS',
+        activeBisSetId: 'andy-rime-bis',
+        bisSets: [
+          {
+            id: 'andy-rime-bis',
+            name: 'Icy Flow Crit Build',
+            items: [
+              { id: 'ar-1', slot: 'Head', itemName: 'Glacial Crown of Varux', dungeonSlug: 'scryers-peak', stats: 'Critical Strike +270, Expertise +80', acquired: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'ting',
+    displayName: 'Ting',
+    inParty: true,
+    activeCharacterId: 'ting-mara',
+    characters: [
+      {
+        id: 'ting-mara',
+        heroId: 'mara',
+        title: 'Melee Assassin',
+        activeBisSetId: 'ting-mara-bis',
+        bisSets: [
+          {
+            id: 'ting-mara-bis',
+            name: 'Crit / Expertise Bleed BIS',
+            items: [
+              { id: 't-1', slot: 'Ring 1', itemName: 'Creeper Vine Loop', dungeonSlug: 'empyrean-sands', stats: 'Critical Strike +187, Expertise +80', acquired: false },
+              { id: 't-2', slot: 'Ring 2', itemName: 'Nezari Seal', dungeonSlug: 'godfall-quarry', stats: 'Critical Strike +80, Expertise +187', acquired: false },
+              { id: 't-3', slot: 'Head', itemName: "Handhafi's Blindfold", dungeonSlug: 'ransack-of-drakheim', stats: 'Critical Strike +184, Expertise +150', acquired: false },
+              { id: 't-4', slot: 'Wrists', itemName: 'Flint & Steel Bracers', dungeonSlug: 'stormwatch', stats: 'Expertise +158, Spirit +28', acquired: false },
+              { id: 't-5', slot: 'Legs', itemName: 'Bloodstained Legguards', dungeonSlug: 'urrak-markets', stats: 'Critical Strike +315, Haste +56', acquired: false },
+              { id: 't-6', slot: 'Hands', itemName: 'Grips of the Wretched', dungeonSlug: 'the-heart-of-tuzari', stats: 'Critical Strike +100, Expertise +123', acquired: true },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'duncan',
+    displayName: 'Duncan',
+    inParty: true,
+    activeCharacterId: 'duncan-elarion',
+    characters: [
+      {
+        id: 'duncan-elarion',
+        heroId: 'elarion',
+        title: 'Ranged Bow DPS',
+        activeBisSetId: 'duncan-elarion-bis',
+        bisSets: [
+          {
+            id: 'duncan-elarion-bis',
+            name: 'Starstriker Haste / Spirit BIS',
+            items: [
+              { id: 'd-1', slot: 'Legs', itemName: 'Trollhide Leggings', dungeonSlug: 'ransack-of-drakheim', stats: 'Critical Strike +111, Haste +259', acquired: false },
+              { id: 'd-2', slot: 'Wrists', itemName: "Auga's Headwrap", dungeonSlug: 'ransack-of-drakheim', stats: 'Critical Strike +84, Spirit +102', acquired: false },
+              { id: 'd-3', slot: 'Hands', itemName: 'Darkwater Grips', dungeonSlug: 'ransack-of-drakheim', stats: 'Haste +189, Spirit +34', acquired: false },
+              { id: 'd-4', slot: 'Ring 1', itemName: "Manhunter's Mark", dungeonSlug: 'the-heart-of-tuzari', stats: 'Haste +187, Expertise +80', acquired: false },
+              { id: 'd-5', slot: 'Feet', itemName: 'Snowcrusted Boots', dungeonSlug: 'wyrmheart', stats: 'Haste +182, Spirit +78', acquired: false },
+              { id: 'd-6', slot: 'Back', itemName: 'Canvas Patch Cloak', dungeonSlug: 'ransack-of-drakheim', stats: 'Critical Strike +84, Spirit +102', acquired: true },
+              { id: 'd-7', slot: 'Head', itemName: 'Spirited Cowl', dungeonSlug: 'sailors-abyss', stats: 'Critical Strike +50, Haste +284', acquired: true },
+              { id: 'd-8', slot: 'Chest', itemName: "Mariner's Armor", dungeonSlug: 'sailors-abyss', stats: 'Haste +224, Spirit +184', acquired: true },
+              { id: 'd-9', slot: 'Ring 2', itemName: 'Frostscale Loop', dungeonSlug: 'wyrmheart', stats: 'Haste +227, Spirit +40', acquired: true },
+              { id: 'd-10', slot: 'Shoulders', itemName: "Brogg's Heavy Mantle", dungeonSlug: 'stormwatch', stats: 'Haste +163, Spirit +134', acquired: true },
+              { id: 'd-11', slot: 'Neck', itemName: "Chain of Starstriker's Ascent", dungeonSlug: 'any-dungeon', stats: 'Spirit +467', acquired: false },
+              { id: 'd-12', slot: 'Relic 1', itemName: 'Sinbinding Stone', dungeonSlug: 'any-dungeon', stats: 'Haste +120, Expertise +280', acquired: false },
+              { id: 'd-13', slot: 'Relic 2', itemName: 'Ancient Poultry Fetish', dungeonSlug: 'any-dungeon', stats: 'Critical Strike +120, Spirit +280', acquired: false },
+              { id: 'd-14', slot: 'Weapon', itemName: "Asha's Chronoshift Bow", dungeonSlug: 'any-dungeon', stats: 'Expertise +200, Spirit +245', acquired: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+];
+
+/**
+ * Seeded directly from "Spider Mount List" (10,000 Eternal Score Tracker — currently 9,951 / 10,000).
+ */
+export const INITIAL_ETERNAL_CHECKLIST: EternalChecklistRow[] = [
+  { dungeonSlug: 'cithrels-fall', targetLevel: 13, bossVariant: 'Ghorn', methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/mnRtosTAOjOYYDjM', finished: false, currentScore: 845 },
+  { dungeonSlug: 'godfall-quarry', targetLevel: 14, bossVariant: 'Eira', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/UL1Py2fYPLuYVLAM', finished: false, currentScore: 866 },
+  { dungeonSlug: 'the-heart-of-tuzari', targetLevel: 14, bossVariant: 'Krumbug', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/MSVsbFU94GBBGa4C', finished: false, currentScore: 703 },
+  { dungeonSlug: 'silken-hollow', targetLevel: 14, bossVariant: 'Krumbug', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/5tukMKJLSMjyWJGo', finished: false, currentScore: 818 },
+  { dungeonSlug: 'empyrean-sands', targetLevel: 15, bossVariant: 'Ghorn', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/tg46s1JLdYHQ3Tdz', finished: true, currentScore: 831 },
+  { dungeonSlug: 'sailors-abyss', targetLevel: 15, bossVariant: 'Krumbug', methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/qwuvGAQB5QbCPVzF', finished: false, currentScore: 832 },
+  { dungeonSlug: 'urrak-markets', targetLevel: 15, bossVariant: 'Eira', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/FndKJ21frabeHTZu', finished: false, currentScore: 881, notes: 'Consider trading for lvl 14 with Ghorn' },
+  { dungeonSlug: 'wraithtide-vault', targetLevel: 15, bossVariant: 'Eira', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/fFVpmYWqhmNmXb3M', finished: false, currentScore: 831 },
+  { dungeonSlug: 'everdawn-grove', targetLevel: 16, bossVariant: 'Krumbug', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/GeFqtIkn0KGSfm6M', finished: false, currentScore: 848 },
+  { dungeonSlug: 'ransack-of-drakheim', targetLevel: 16, bossVariant: 'Ghorn', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RtcCdsCwNIlcSckl', finished: false, currentScore: 845 },
+  { dungeonSlug: 'stormwatch', targetLevel: 16, bossVariant: 'Eira', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/yEwFYdfADLa8tVER', finished: false, currentScore: 800, notes: 'Consider trading for lvl 14 with Ghorn' },
+  { dungeonSlug: 'wyrmheart', targetLevel: 16, bossVariant: 'Ghorn', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/aOKmkuC2d6n5eCLu', finished: false, currentScore: 851 },
+];
+
+export function createIdleLiveRunState(): LiveRunState {
+  return {
+    status: 'idle',
+    dungeonZoneId: null,
+    dungeonSlug: null,
+    dungeonName: null,
+    difficultyRaw: null,
+    difficultyLabel: 'Standby (Stronghold)',
+    eternalLevel: null,
+    affixes: [],
+    detectedVariant: 'Regular',
+    startedAtIso: null,
+    durationSeconds: null,
+    timedSuccess: null,
+    killScoreCurrent: 0,
+    killScoreTarget: 260,
+    activeEncounter: null,
+    deaths: 0,
+    units: {},
+    recentEvents: [],
+  };
+}
+
+export function createDefaultPartyState(roomId = 'stronghold'): PartySyncState {
+  return {
+    roomId,
+    revision: 1,
+    leadMemberId: 'nick',
+    autoFollowLogLead: true,
+    activeDungeonSlug: 'ransack-of-drakheim',
+    activeVariant: 'Krumbug',
+    activeRouteId: 'rod-krumbug',
+    activePullIndex: 1,
+    plannedEternalLevel: 16,
+    pings: [],
+    members: structuredClone(INITIAL_MEMBERS),
+    customRoutes: [],
+    eternalChecklist: structuredClone(INITIAL_ETERNAL_CHECKLIST),
+    liveRun: createIdleLiveRunState(),
+  };
+}
