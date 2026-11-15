@@ -1,7 +1,6 @@
 import {
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   FolderSearch,
   MapPin,
   Play,
@@ -22,7 +21,7 @@ import type {
   RoutePlan,
 } from '../domain/types';
 import type { LogWatcherController } from '../services/combatLogWatcher';
-import { TacticalRouteMap } from './TacticalRouteMap';
+import { MethodRouteEmbed } from './MethodRouteEmbed';
 
 interface PunchListSplashProps {
   punch: PunchListSummary;
@@ -349,50 +348,20 @@ export function PunchListSplash({
           </button>
         </div>
 
-        <TacticalRouteMap
+        <MethodRouteEmbed
           dungeon={activeDungeon}
+          activeRoute={activeRoute}
+          variant={activeVariant}
           pulls={pulls}
           activePullIndex={activePullIndex}
-          variant={activeVariant}
           liveRun={liveRun}
           pings={pings}
+          compact
           onSelectPull={onSelectPull}
           onPingMap={onPingMap}
         />
 
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {activeRoute?.methodUrl && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                padding: '9px 12px',
-                background: 'var(--bg-canvas)',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                  Linked Method Route ({activeRoute.sourceTag})
-                </div>
-                <div style={{ fontWeight: 600, fontSize: '0.84rem' }}>
-                  {activeRoute.label}
-                </div>
-              </div>
-              <a
-                id="link-splash-method-route"
-                href={activeRoute.methodUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-sm"
-              >
-                Open Method Map <ExternalLink size={13} />
-              </a>
-            </div>
-          )}
 
           {/* CombatLogs Auto-Watcher Controls */}
           <div

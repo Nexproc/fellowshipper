@@ -231,5 +231,19 @@ describe('GCP Firebase Account Ownership & Per-Character Permissions', () => {
     expect(releaseMemberSlot(duncanSlot, tingUser.uid).ownerUid).toBe(duncanUser.uid);
     expect(releaseMemberSlot(duncanSlot, duncanUser.uid).ownerUid).toBeNull();
   });
+
+  it('resolves synchronized Method.gg embed URLs with dungeon-slug fallbacks', async () => {
+    const { resolveMethodRouteUrl } = await import('../punchList');
+    const { DUNGEONS } = await import('../catalog');
+    const stormwatch = DUNGEONS.find((d) => d.slug === 'stormwatch')!;
+    const swRoute = BUILT_IN_ROUTES.find((r) => r.id === 'sw-reg')!;
+
+    expect(resolveMethodRouteUrl(stormwatch, swRoute)).toBe(
+      'https://www.method.gg/fellowship/route-planner/stormwatch/YIWHe5JCMtWaSRnB'
+    );
+    expect(resolveMethodRouteUrl(stormwatch, null)).toBe(
+      'https://www.method.gg/fellowship/route-planner/stormwatch'
+    );
+  });
 });
 

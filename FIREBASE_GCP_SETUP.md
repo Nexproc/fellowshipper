@@ -1,51 +1,52 @@
 # Create & Deploy Your New GCP + Firebase Project
 
-Because Google Cloud project creation requires your Google Cloud Billing Account OAuth session, this repository includes a turnkey provisioner ([`scripts/provision-gcp.sh`](scripts/provision-gcp.sh)) that creates a **brand-new GCP project**, links your **free GCP credits**, provisions **Firestore + Realtime Database + Identity Platform + Hosting**, and deploys **Fellowshipper** live in one run.
+This repository includes an unattended GCP + Firebase provisioner ([`scripts/provision-gcp.sh`](scripts/provision-gcp.sh)) and a mobile-friendly GitHub Actions workflow ([`.github/workflows/provision-gcp.yml`](.github/workflows/provision-gcp.yml)) that provision **Firestore**, **Realtime Database**, **Identity Platform (Google + Discord OAuth2)**, and **Firebase Hosting** on your GCP project.
 
 ---
 
-## Option A: Run Directly in Google Cloud Shell (Zero Local Installs — ~3 Minutes)
+## Option A: Mobile Setup via GitHub Actions (No Terminal Needed)
 
-Google Cloud Shell runs inside your browser with `gcloud`, `node`, `npm`, `firebase`, and `gh` already installed and signed in to your Google account.
+1. **Create Your GCP Project** (with your free-credits billing account selected):
+   - Open [Google Cloud Console -> Create Project](https://console.cloud.google.com/projectcreate) and note the **Project ID** (for example `personal-web-apps-4821`).
+2. **Create a Deployer Service Account (Modern Predefined Roles — No Legacy `Owner`)**:
+   - Open [IAM & Admin -> Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts) in that project -> **Create Service Account** (name: `fellowshipper-deploy`).
+   - Under **Grant this service account access to project**, add these **2 predefined non-legacy roles**:
+     1. **`Firebase Admin`** (`roles/firebase.admin`)
+     2. **`Service Usage Admin`** (`roles/serviceusage.serviceUsageAdmin`)
+   - Tap **Done** -> open the service account -> **Keys** tab -> **Add Key -> Create new key -> JSON** (saves the `.json` file to your phone).
+3. **Save Secret & Run the GitHub Action**:
+   - Open [GitHub Actions Secrets for `Nexproc/fellowshipper`](https://github.com/Nexproc/fellowshipper/settings/secrets/actions) -> **New repository secret**:
+     - Name: `FIREBASE_SERVICE_ACCOUNT`
+     - Secret: paste the contents of the downloaded `.json` key file.
+     - *(Optional)* Add `DISCORD_CLIENT_SECRET` if configuring Discord OAuth2 at the same time.
+   - Open [Actions -> Provision GCP & Firebase](https://github.com/Nexproc/fellowshipper/actions/workflows/provision-gcp.yml) -> **Run workflow**, enter your **GCP Project ID**, and tap **Run workflow**.
+4. **Enable Sign-In Providers**:
+   - Open `https://console.firebase.google.com/project/<YOUR-PROJECT-ID>/authentication/providers` and toggle **Google -> Enable -> Save** (plus **Discord** OIDC if skipped during the workflow).
+
+---
+
+## Option B: Run Directly in Google Cloud Shell (~3 Minutes)
 
 1. Open this repository in Cloud Shell:
    - [**Launch Fellowshipper in Google Cloud Shell**](https://shell.cloud.google.com/?cloudshell_git_repo=https://github.com/Nexproc/fellowshipper&cloudshell_tutorial=FIREBASE_GCP_SETUP.md)
-2. Run the turnkey provisioner:
+2. Run the provisioner:
    ```bash
    bash scripts/provision-gcp.sh
    ```
-3. Follow the 2 prompts:
-   - Press **Enter** to accept the generated project ID (e.g. `fellowshipper-4821`) or type a custom ID.
-   - *(Optional)* Paste your **Discord Client ID** and **Client Secret** (from [Discord Developer Portal -> Applications -> OAuth2](https://discord.com/developers/applications) with redirect URI `https://<PROJECT-ID>.firebaseapp.com/__/auth/handler`), or press **Enter** to add Discord later.
-4. When the script finishes (~2 minutes), open the printed **Auth Providers** URL (`https://console.firebase.google.com/project/<PROJECT-ID>/authentication/providers`) and toggle **Google -> Enable -> Save**.
-5. Share `https://<PROJECT-ID>.web.app/?room=stronghold` in Discord!
-
-*(Tip: If you also want future `git push` commits on `Nexproc/fellowshipper` to auto-deploy via GitHub Actions, run `gh auth login` in Cloud Shell before running `bash scripts/provision-gcp.sh`—the script detects `gh` and uploads all `VITE_FIREBASE_*` + `FIREBASE_SERVICE_ACCOUNT` repository secrets automatically.)*
+3. When it finishes, open the printed **Auth Providers** URL (`https://console.firebase.google.com/project/<PROJECT-ID>/authentication/providers`), enable **Google**, and share `https://<PROJECT-ID>.web.app/?room=stronghold` in Discord.
 
 ---
 
-## Option B: Manual Click-Through in GCP & Firebase Consoles
+## Option C: Manual Click-Through in GCP & Firebase Consoles
 
-If you prefer clicking through the web UI instead of running `provision-gcp.sh`:
-
-1. **Create New GCP Project & Attach Free Credits**:
-   - Open [Google Cloud Console -> New Project](https://console.cloud.google.com/projectcreate), name it `Fellowshipper`, and make sure **Billing account** is set to your free-credits billing account.
+1. **Create GCP Project**: [Google Cloud Console -> New Project](https://console.cloud.google.com/projectcreate) with your free-credits billing account attached.
 2. **Add Firebase & Databases**:
-   - Open [Firebase Console](https://console.firebase.google.com/) -> **Add project** -> select the `Fellowshipper` GCP project you just created.
-   - **Build -> Firestore Database -> Create database** (`Standard` edition, `nam5` / nearest region).
-   - **Build -> Realtime Database -> Create Database** (`us-central1` / nearest region).
-   - **Project Settings (gear icon) -> General -> Your apps -> Web (`</>`)**: register `Fellowshipper` and copy your `firebaseConfig`.
+   - [Firebase Console](https://console.firebase.google.com/) -> **Add project** -> select your GCP project.
+   - **Build -> Firestore Database -> Create database** (`Standard` edition, `nam5`).
+   - **Build -> Realtime Database -> Create Database** (`us-central1`).
+   - **Project Settings -> General -> Your apps -> Web (`</>`)**: register `Fellowshipper` and copy `firebaseConfig`.
 3. **Enable Google & Discord Login**:
-   - **Build -> Authentication -> Get started -> Sign-in method**:
-     - Enable **Google**.
-     - Click **Add new provider -> OpenID Connect** (upgrades to Identity Platform — free up to 50,000 MAUs/month):
-       - **Grant type**: `Code flow` · **Name**: `Discord` · **Provider ID**: `discord` (becomes `oidc.discord`) · **Issuer URL**: `https://discord.com`
-       - Paste **Client ID** and **Client Secret** from [Discord Developer Portal](https://discord.com/developers/applications) (Redirect URI: `https://<YOUR-PROJECT-ID>.firebaseapp.com/__/auth/handler`).
-4. **Deploy**:
-   - Copy `.env.example` to `.env.local` with your `firebaseConfig` values, then run:
-     ```bash
-     npm install
-     npm run build
-     npx firebase-tools login
-     npx firebase-tools deploy --project <YOUR-PROJECT-ID>
-     ```
+   - **Build -> Authentication -> Get started -> Sign-in method** -> enable **Google**.
+   - **Add new provider -> OpenID Connect**:
+     - **Grant type**: `Code flow` · **Name**: `Discord` · **Provider ID**: `discord` (`oidc.discord`) · **Issuer URL**: `https://discord.com`
+     - Paste **Client ID** and **Client Secret** from [Discord Developer Portal](https://discord.com/developers/applications) (Redirect URI: `https://<YOUR-PROJECT-ID>.firebaseapp.com/__/auth/handler`).

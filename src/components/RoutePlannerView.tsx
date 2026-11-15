@@ -22,7 +22,7 @@ import type {
   RoutePlan,
 } from '../domain/types';
 import type { LogWatcherController } from '../services/combatLogWatcher';
-import { TacticalRouteMap } from './TacticalRouteMap';
+import { MethodRouteEmbed } from './MethodRouteEmbed';
 
 interface RoutePlannerViewProps {
   activeDungeon: DungeonDefinition;
@@ -278,11 +278,12 @@ export function RoutePlannerView({
           </div>
         )}
 
-        <TacticalRouteMap
+        <MethodRouteEmbed
           dungeon={activeDungeon}
+          activeRoute={activeRoute}
+          variant={activeVariant}
           pulls={pulls}
           activePullIndex={activePullIndex}
-          variant={activeVariant}
           liveRun={liveRun}
           pings={pings}
           onSelectPull={onSelectPull}

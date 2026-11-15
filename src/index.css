@@ -956,4 +956,63 @@ a:hover {
   .bis-add-item-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+  .method-embed-frame-wrap {
+    height: 440px;
+  }
+  .method-embed-frame-wrap.is-compact {
+    height: 400px;
+  }
+  .method-embed-frame-wrap.is-tall {
+    height: 74vh;
+  }
+}
+
+/* Embedded Method.gg Route Planner */
+.method-embed-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.method-embed-toolbar {
+  padding: 9px 14px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.method-embed-modes,
+.method-embed-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.method-embed-frame-wrap {
+  position: relative;
+  width: 100%;
+  height: 580px;
+  background: hsl(216 24% 7.5%);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.method-embed-frame-wrap.is-compact {
+  height: 470px;
+}
+
+.method-embed-frame-wrap.is-tall {
+  height: 780px;
+}
+
+.method-embed-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: hsl(216 24% 7.5%);
 }

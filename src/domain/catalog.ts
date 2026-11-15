@@ -414,7 +414,7 @@ export const BUILT_IN_ROUTES: readonly RoutePlan[] = [
   { id: 'ror-eira', dungeonSlug: 'ruins-of-regath', variant: 'Eira', label: 'Ruins of Regath — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/HBQgaQFlPvulMLRm', sourceTag: 'Core Routes' },
 
   // Xul, The Blood Monolith
-  { id: 'xul-reg', dungeonSlug: 'xul-the-blood-monolith', variant: 'Regular', label: 'Xul, The Blood Monolith — Pinnacle Route', methodUrl: 'https://www.method.gg/fellowship/route-planner', sourceTag: 'Core Routes' },
+  { id: 'xul-reg', dungeonSlug: 'xul-the-blood-monolith', variant: 'Regular', label: 'Xul, The Blood Monolith — Pinnacle Route', methodUrl: 'https://www.method.gg/fellowship/route-planner/xul-the-blood-monolith', sourceTag: 'Core Routes' },
 ] as const;
 
 /**

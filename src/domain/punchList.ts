@@ -244,3 +244,14 @@ export function formatDurationSeconds(seconds: number): string {
   const secs = safe % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
+
+export function resolveMethodRouteUrl(
+  dungeon: DungeonDefinition,
+  activeRoute: RoutePlan | null
+): string {
+  const raw = activeRoute?.methodUrl?.trim();
+  if (raw && raw !== 'https://www.method.gg/fellowship/route-planner') {
+    return raw;
+  }
+  return `https://www.method.gg/fellowship/route-planner/${dungeon.slug}`;
+}

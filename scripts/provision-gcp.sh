@@ -82,18 +82,22 @@ fi
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
-# 4. Link Billing Account (so your free GCP credits cover Blaze/Identity Platform)
-BILLING_ENABLED="$(gcloud billing projects describe "$PROJECT_ID" --format="value(billingEnabled)" 2>/dev/null || echo "False")"
-if [[ "$BILLING_ENABLED" != "True" ]]; then
+# 4. Link Billing Account (when running interactively with user OAuth; Service Accounts skip org billing list)
+BILLING_ENABLED="$(gcloud billing projects describe "$PROJECT_ID" --format="value(billingEnabled)" 2>/dev/null || echo "Unknown")"
+if [[ "$BILLING_ENABLED" == "True" ]]; then
+  echo "-> Billing already linked on '$PROJECT_ID'."
+elif [[ "$BILLING_ENABLED" == "Unknown" || -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" || "$ACTIVE_ACCOUNT" == *.gserviceaccount.com ]]; then
+  echo "-> Running with project-scoped Service Account (Firebase Admin + Service Usage Admin); skipping org-level billing query (using billing attached to '$PROJECT_ID')."
+else
   echo "-> Checking open GCP Billing Accounts (for your free credits)..."
-  mapfile -t BILLING_LINES < <(gcloud billing accounts list --filter="open=true" --format="value(ACCOUNT_ID,NAME)")
+  mapfile -t BILLING_LINES < <(gcloud billing accounts list --filter="open=true" --format="value(ACCOUNT_ID,NAME)" 2>/dev/null || true)
   if [[ "${#BILLING_LINES[@]}" -eq 0 ]]; then
-    echo "ERROR: No open GCP Billing Account found on $ACTIVE_ACCOUNT."
-    echo "Activate your free GCP credits at https://console.cloud.google.com/billing first, then re-run."
-    exit 1
+    echo "WARNING: Could not list open GCP Billing Accounts on $ACTIVE_ACCOUNT; continuing if billing is already linked in Console."
   elif [[ "${#BILLING_LINES[@]}" -eq 1 ]]; then
     BILLING_ID="$(echo "${BILLING_LINES[0]}" | awk '{print $1}')"
     echo "-> Linking billing account $BILLING_ID to $PROJECT_ID..."
+    gcloud billing projects link "$PROJECT_ID" --billing-account="$BILLING_ID" >/dev/null
+    echo "-> Billing account linked."
   else
     echo "Multiple open billing accounts found:"
     idx=1
@@ -104,11 +108,9 @@ if [[ "$BILLING_ENABLED" != "True" ]]; then
     read -r -p "Select billing account number [1]: " B_CHOICE
     B_CHOICE="${B_CHOICE:-1}"
     BILLING_ID="$(echo "${BILLING_LINES[$((B_CHOICE - 1))]}" | awk '{print $1}')"
+    gcloud billing projects link "$PROJECT_ID" --billing-account="$BILLING_ID" >/dev/null
+    echo "-> Billing account linked."
   fi
-  gcloud billing projects link "$PROJECT_ID" --billing-account="$BILLING_ID" >/dev/null
-  echo "-> Billing account linked."
-else
-  echo "-> Billing already linked on '$PROJECT_ID'."
 fi
 
 # 5. Enable required GCP & Firebase APIs
@@ -326,7 +328,7 @@ if [[ -z "$DEPLOY_CREDS" || ! -f "$DEPLOY_CREDS" ]]; then
       --project="$PROJECT_ID" >/dev/null
   fi
 
-  for ROLE in roles/firebase.admin roles/serviceusage.serviceUsageConsumer; do
+  for ROLE in roles/firebase.admin roles/serviceusage.serviceUsageAdmin; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
       --member="serviceAccount:${SA_EMAIL}" \
       --role="$ROLE" \
@@ -363,6 +365,15 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     gh secret set FIREBASE_SERVICE_ACCOUNT --repo Nexproc/fellowshipper < "$TEMP_SA_KEY" || true
   fi
   echo "-> GitHub Actions auto-deploy secrets configured!"
+fi
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  {
+    echo "## Fellowshipper Deployed on GCP (\`${PROJECT_ID}\`)"
+    echo "- **Live App URL:** https://${PROJECT_ID}.web.app/?room=stronghold"
+    echo "- **Firebase Auth Providers:** https://console.firebase.google.com/project/${PROJECT_ID}/authentication/providers"
+    echo "- **Discord OAuth2 Redirect URI:** \`https://${PROJECT_ID}.firebaseapp.com/__/auth/handler\`"
+  } >> "$GITHUB_STEP_SUMMARY"
 fi
 
 echo ""
