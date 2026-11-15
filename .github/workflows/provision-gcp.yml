@@ -1,0 +1,43 @@
+name: Provision GCP & Firebase (Mobile No-Terminal Setup)
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'GCP Project ID (created at console.cloud.google.com/projectcreate)'
+        required: true
+        type: string
+      discord_client_id:
+        description: 'Optional Discord OAuth2 Client ID'
+        required: false
+        type: string
+
+jobs:
+  provision:
+    name: Provision Firebase, Firestore, RTDB & Hosting on GCP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run unattended GCP + Firebase Provisioner
+        env:
+          NON_INTERACTIVE: '1'
+          PROJECT_ID: ${{ inputs.project_id }}
+          DISCORD_CLIENT_ID: ${{ inputs.discord_client_id }}
+          DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+        run: bash scripts/provision-gcp.sh --yes

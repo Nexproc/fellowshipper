@@ -410,17 +410,7 @@ export function BisGearManager({
 
         {/* Add Item Row (visible when permitted to edit builds) */}
         {perms.canEditBuilds && (
-          <div
-            style={{
-              padding: '14px 18px',
-              background: 'var(--bg-canvas)',
-              borderBottom: '1px solid var(--border-subtle)',
-              display: 'grid',
-              gridTemplateColumns: '120px minmax(160px, 1.2fr) minmax(170px, 1.1fr) minmax(160px, 1fr) auto',
-              gap: 8,
-              alignItems: 'center',
-            }}
-          >
+          <div className="bis-add-item-grid">
             <select
               aria-label="Gear Slot"
               className="select-control"

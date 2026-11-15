@@ -414,7 +414,7 @@ export function App() {
       <header className="topbar">
         <div className="brand-cluster">
           <img
-            src="/fellowshipper-mark.svg"
+            src={`${import.meta.env.BASE_URL}fellowshipper-mark.svg`}
             alt=""
             className="brand-mark"
           />

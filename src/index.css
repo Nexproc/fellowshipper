@@ -889,6 +889,16 @@ a:hover {
   animation: ping-ripple 1.8s ease-out infinite;
 }
 
+.bis-add-item-grid {
+  padding: 14px 18px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-subtle);
+  display: grid;
+  grid-template-columns: 120px minmax(160px, 1.2fr) minmax(170px, 1.1fr) minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 @media (max-width: 1080px) {
   .party-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -899,19 +909,51 @@ a:hover {
   .auth-options-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+  .bis-add-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 680px) {
   .app-shell {
     padding: 10px 12px 36px;
+    gap: 12px;
+  }
+  .topbar {
+    padding: 12px;
+    gap: 10px;
+  }
+  .nav-tabs {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav-tab {
+    flex: 1 0 auto;
+    justify-content: center;
+    padding: 8px 10px;
+    font-size: 0.79rem;
+  }
+  .session-controls {
+    width: 100%;
+    justify-content: space-between;
   }
   .party-strip {
     grid-template-columns: minmax(0, 1fr);
   }
   .punch-row-summary {
     grid-template-columns: 38px minmax(0, 1fr);
+    padding: 10px 12px;
+  }
+  .punch-row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
   }
   .punch-drawer {
-    padding-left: 16px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .bis-add-item-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -51,11 +51,16 @@ if [[ -z "$ACTIVE_ACCOUNT" ]]; then
 fi
 echo "-> Authenticated to GCP as: $ACTIVE_ACCOUNT"
 
+AUTO_YES=0
+if [[ "${1:-}" == "--yes" || "${1:-}" == "-y" || "${NON_INTERACTIVE:-}" == "1" ]]; then
+  AUTO_YES=1
+fi
+
 # 2. Choose globally unique GCP Project ID
 RAND_SUFFIX="$(printf '%04d' $((RANDOM % 9000 + 1000)))"
 DEFAULT_PROJECT_ID="${PROJECT_ID:-fellowshipper-${RAND_SUFFIX}}"
 
-if [[ -t 0 && -z "${PROJECT_ID:-}" ]]; then
+if [[ "$AUTO_YES" -eq 0 && -t 0 && -z "${PROJECT_ID:-}" ]]; then
   read -r -p "Enter new GCP Project ID [${DEFAULT_PROJECT_ID}]: " INPUT_PID
   PROJECT_ID="${INPUT_PID:-$DEFAULT_PROJECT_ID}"
 else
@@ -309,30 +314,32 @@ node -e '
 
 echo "-> Wrote .env.local and .firebaserc for project '$PROJECT_ID'."
 
-# 12. Create Service Account for Non-Interactive Deploy & GitHub Actions CI/CD
-SA_NAME="fellowshipper-deploy"
-SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-if ! gcloud iam service-accounts describe "$SA_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
-  echo "-> Creating deploy service account ($SA_EMAIL)..."
-  gcloud iam service-accounts create "$SA_NAME" \
-    --display-name="Fellowshipper Firebase Deployer" \
+# 12. Prepare Service Account Credentials for Non-Interactive Deploy & CI/CD
+DEPLOY_CREDS="${GOOGLE_APPLICATION_CREDENTIALS:-}"
+if [[ -z "$DEPLOY_CREDS" || ! -f "$DEPLOY_CREDS" ]]; then
+  SA_NAME="fellowshipper-deploy"
+  SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+  if ! gcloud iam service-accounts describe "$SA_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    echo "-> Creating deploy service account ($SA_EMAIL)..."
+    gcloud iam service-accounts create "$SA_NAME" \
+      --display-name="Fellowshipper Firebase Deployer" \
+      --project="$PROJECT_ID" >/dev/null
+  fi
+
+  for ROLE in roles/firebase.admin roles/serviceusage.serviceUsageConsumer; do
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${SA_EMAIL}" \
+      --role="$ROLE" \
+      --quiet >/dev/null
+  done
+
+  TEMP_SA_KEY="$(mktemp /tmp/fellowshipper-sa-XXXXXX.json)"
+  gcloud iam service-accounts keys create "$TEMP_SA_KEY" \
+    --iam-account="$SA_EMAIL" \
     --project="$PROJECT_ID" >/dev/null
+  DEPLOY_CREDS="$TEMP_SA_KEY"
+  sleep 5
 fi
-
-for ROLE in roles/firebase.admin roles/serviceusage.serviceUsageConsumer; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${SA_EMAIL}" \
-    --role="$ROLE" \
-    --quiet >/dev/null
-done
-
-TEMP_SA_KEY="$(mktemp /tmp/fellowshipper-sa-XXXXXX.json)"
-gcloud iam service-accounts keys create "$TEMP_SA_KEY" \
-  --iam-account="$SA_EMAIL" \
-  --project="$PROJECT_ID" >/dev/null
-
-# Wait briefly for IAM propagation on brand-new service account keys
-sleep 5
 
 # 13. Install dependencies, build production bundle, and deploy to Firebase!
 echo "-> Building Fellowshipper production bundle..."
@@ -340,7 +347,7 @@ npm install
 npm run build
 
 echo "-> Deploying Firestore rules, Realtime Database rules, and Hosting to GCP..."
-GOOGLE_APPLICATION_CREDENTIALS="$TEMP_SA_KEY" npx --yes firebase-tools deploy \
+GOOGLE_APPLICATION_CREDENTIALS="$DEPLOY_CREDS" npx --yes firebase-tools deploy \
   --project "$PROJECT_ID" \
   --only firestore:rules,database,hosting
 
@@ -352,7 +359,9 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
       gh secret set "$key" --repo Nexproc/fellowshipper --body "$val" || true
     fi
   done < .env.local
-  gh secret set FIREBASE_SERVICE_ACCOUNT --repo Nexproc/fellowshipper < "$TEMP_SA_KEY" || true
+  if [[ -n "$TEMP_SA_KEY" && -f "$TEMP_SA_KEY" ]]; then
+    gh secret set FIREBASE_SERVICE_ACCOUNT --repo Nexproc/fellowshipper < "$TEMP_SA_KEY" || true
+  fi
   echo "-> GitHub Actions auto-deploy secrets configured!"
 fi
 
