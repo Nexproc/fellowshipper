@@ -1,5 +1,5 @@
-const CACHE_NAME = 'fellowshipper-shell-v1';
-const SHELL_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/fellowshipper-mark.svg'];
+const CACHE_NAME = 'fellowshipper-shell-v3';
+const SHELL_ASSETS = ['./', './index.html', './manifest.webmanifest', './fellowshipper-mark.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -23,7 +23,14 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/')) return;
+  if (
+    url.pathname.startsWith('/__/') ||
+    url.pathname.includes('/__/auth/') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/ws/')
+  ) {
+    return;
+  }
 
   event.respondWith(
     fetch(request)
@@ -34,6 +41,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html')))
+      .catch(() => caches.match(request).then((cached) => cached || caches.match('./index.html')))
   );
 });

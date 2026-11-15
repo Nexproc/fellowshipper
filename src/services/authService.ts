@@ -87,6 +87,7 @@ async function hydrateOidcProfile(
 
 export interface AuthController {
   isFirebaseConfigured: boolean;
+  isGoogleAuthEnabled: boolean;
   isRuntimeOverride: boolean;
   projectId: string | null;
   user: AuthUserInfo | null;
@@ -191,6 +192,7 @@ export function useFirebaseAuth(): AuthController {
 
   return {
     isFirebaseConfigured: Boolean(services),
+    isGoogleAuthEnabled: services?.isGoogleAuthEnabled ?? true,
     isRuntimeOverride: services?.isRuntimeOverride ?? false,
     projectId: services?.projectId ?? null,
     user,

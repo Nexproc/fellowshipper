@@ -263,6 +263,7 @@ async function main() {
     `VITE_FIREBASE_MESSAGING_SENDER_ID=${cfg.messagingSenderId || ''}`,
     `VITE_FIREBASE_APP_ID=${cfg.appId || appId}`,
     `VITE_DISCORD_OIDC_PROVIDER_ID=${discordProviderId}`,
+    `VITE_GOOGLE_AUTH_ENABLED=${Boolean(googleResp.json?.enabled)}`,
   ];
 
   appendLines(process.env.GITHUB_ENV, envVars);

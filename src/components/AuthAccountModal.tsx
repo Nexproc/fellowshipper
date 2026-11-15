@@ -198,18 +198,10 @@ export function AuthAccountModal({
                 }}
               >
                 <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
-                  Sign in with your Google or Discord account to claim your party slot and
-                  manage your characters &amp; BIS gear sets.
+                  Sign in with {auth.isGoogleAuthEnabled ? 'Discord or Google' : 'Discord'} to
+                  claim your party slot and manage your characters &amp; BIS gear sets.
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    id="btn-login-google"
-                    className="btn btn-primary"
-                    onClick={() => void auth.signInWithGoogle()}
-                  >
-                    <KeyRound size={14} /> Sign in with Google
-                  </button>
                   <button
                     type="button"
                     id="btn-login-discord"
@@ -218,11 +210,22 @@ export function AuthAccountModal({
                       background: '#5865F2',
                       borderColor: '#5865F2',
                       color: '#ffffff',
+                      fontWeight: 700,
                     }}
                     onClick={() => void auth.signInWithDiscord()}
                   >
-                    Sign in with Discord
+                    <KeyRound size={14} /> Sign in with Discord
                   </button>
+                  {auth.isGoogleAuthEnabled && (
+                    <button
+                      type="button"
+                      id="btn-login-google"
+                      className="btn btn-primary"
+                      onClick={() => void auth.signInWithGoogle()}
+                    >
+                      <KeyRound size={14} /> Sign in with Google
+                    </button>
+                  )}
                 </div>
               </div>
             )

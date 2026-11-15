@@ -12,6 +12,7 @@ export interface FirebaseServices {
   rtdb: Database | null;
   projectId: string;
   discordProviderId: string;
+  isGoogleAuthEnabled: boolean;
   isRuntimeOverride: boolean;
 }
 
@@ -107,6 +108,11 @@ export function getDiscordProviderId(): string {
   return env.VITE_DISCORD_OIDC_PROVIDER_ID?.trim() || 'oidc.discord';
 }
 
+export function getIsGoogleAuthEnabled(): boolean {
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+  return env.VITE_GOOGLE_AUTH_ENABLED?.trim().toLowerCase() !== 'false';
+}
+
 export function getFirebaseServices(): FirebaseServices | null {
   if (cachedServices !== undefined) {
     return cachedServices;
@@ -139,6 +145,7 @@ export function getFirebaseServices(): FirebaseServices | null {
       rtdb,
       projectId: resolved.options.projectId,
       discordProviderId: getDiscordProviderId(),
+      isGoogleAuthEnabled: getIsGoogleAuthEnabled(),
       isRuntimeOverride: resolved.isRuntimeOverride,
     };
     return cachedServices;
