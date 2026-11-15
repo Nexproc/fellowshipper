@@ -7,9 +7,14 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Trophy,
 } from 'lucide-react';
 import { useState } from 'react';
-import { HEROES } from '../domain/catalog';
+import { DUNGEONS, HEROES } from '../domain/catalog';
+import {
+  computeMemberProgressionSummary,
+  formatDungeonClearLabel,
+} from '../domain/dungeonScore';
 import {
   evaluateMemberPermissions,
   evaluatePartyPermissions,
@@ -37,6 +42,7 @@ interface PartyRosterBarProps {
   onClaimUnownedParty: () => void;
   onJoinParty: (displayName: string, heroId: HeroId) => void;
   onOpenAuthModal: () => void;
+  onOpenScoresTab?: () => void;
   onToggleInParty: (memberId: string) => void;
   onSelectCharacter: (memberId: string, characterId: string) => void;
   onSetLead: (memberId: string) => void;
@@ -55,6 +61,7 @@ export function PartyRosterBar({
   onClaimUnownedParty,
   onJoinParty,
   onOpenAuthModal,
+  onOpenScoresTab,
   onToggleInParty,
   onSelectCharacter,
   onSetLead,
@@ -264,6 +271,7 @@ export function PartyRosterBar({
         {members.map((member) => {
           const resolved = resolveActiveCharacter(member);
           const perms = evaluateMemberPermissions(member, ownershipCtx);
+          const prog = computeMemberProgressionSummary(member, DUNGEONS);
           const memberPeers = online.filter((p) => p.memberId === member.id);
           const isOnline = memberPeers.length > 0;
           const isStreamingLogs = memberPeers.some((p) => p.isWatchingLogs);
@@ -383,6 +391,40 @@ export function PartyRosterBar({
                 </label>
               </div>
 
+              <button
+                type="button"
+                id={`btn-member-score-${member.id}`}
+                className="roster-score-strip"
+                onClick={onOpenScoresTab}
+                title="View and edit per-dungeon scores and highest cleared difficulties"
+              >
+                <span
+                  className="mono"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    color:
+                      prog.totalScore > 0 ? 'var(--gold-400)' : 'var(--text-muted)',
+                    fontWeight: 700,
+                  }}
+                >
+                  <Trophy size={12} />
+                  {prog.totalScore.toLocaleString()} Rating
+                </span>
+                <span
+                  className={`tier-badge ${
+                    prog.highestClear
+                      ? `tier-${prog.highestClear.league}`
+                      : 'tier-none'
+                  }`}
+                >
+                  {prog.highestClear
+                    ? `Best: ${formatDungeonClearLabel(prog.highestClear)}`
+                    : 'No Clears'}
+                </span>
+              </button>
+
               <div
                 style={{
                   display: 'flex',
@@ -391,9 +433,12 @@ export function PartyRosterBar({
                   color: 'var(--text-muted)',
                 }}
               >
-                <span>{resolved?.bisSet.name ?? 'No BIS set'}</span>
+                <span>
+                  {prog.clearedCount}/{prog.totalDungeons} S2 maps ·{' '}
+                  {resolved?.bisSet.name ?? 'No BIS set'}
+                </span>
                 <span className="mono" style={{ color: 'var(--text-secondary)' }}>
-                  {unacquiredCount} dungeon drops left
+                  {unacquiredCount} drops left
                 </span>
               </div>
             </article>

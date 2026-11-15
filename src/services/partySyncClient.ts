@@ -22,6 +22,8 @@ import {
   formatPartyNameFromRoomId,
 } from '../domain/catalog';
 import { parseCombatLogLine, reduceCombatEvent } from '../domain/combatLogParser';
+import { applyCombatClearToPartyState } from '../domain/dungeonScore';
+import { evaluateMemberPermissions } from '../domain/ownership';
 import { selectBestRoute } from '../domain/punchList';
 import type {
   AuthUserInfo,
@@ -794,8 +796,29 @@ export function usePartyRoom(
       let activeRouteR5 = prev.activeRouteR5 ?? null;
       let activeRoutePulls = prev.activeRoutePulls ?? null;
       let plannedEternalLevel = prev.plannedEternalLevel;
+      let members = prev.members;
+      let eternalChecklist = prev.eternalChecklist;
       let routeTriggered = false;
+      let checklistUpdated = false;
+      const updatedMemberIds = new Set<string>();
       const allRoutes = [...prev.customRoutes, ...BUILT_IN_ROUTES];
+
+      const editableMemberIds = services
+        ? new Set(
+            prev.members
+              .filter(
+                (m) =>
+                  evaluateMemberPermissions(m, {
+                    authEnforced: true,
+                    currentUser: authUserRef.current,
+                    leadMemberId: prev.leadMemberId,
+                    members: prev.members,
+                    partyOwnerUids: prev.ownerUids,
+                  }).canToggleLootAndParty
+              )
+              .map((m) => m.id)
+          )
+        : undefined;
 
       for (const line of lines) {
         const parsed = parseCombatLogLine(line);
@@ -820,6 +843,26 @@ export function usePartyRoom(
             activeRoutePulls = null;
           }
         }
+
+        if (reduced.completedClearTrigger) {
+          const applied = applyCombatClearToPartyState(
+            {
+              ...prev,
+              members,
+              eternalChecklist,
+            },
+            reduced.completedClearTrigger,
+            editableMemberIds
+          );
+          members = applied.members;
+          eternalChecklist = applied.eternalChecklist;
+          if (applied.checklistUpdated) {
+            checklistUpdated = true;
+          }
+          for (const id of applied.updatedMemberIds) {
+            updatedMemberIds.add(id);
+          }
+        }
       }
 
       const next: PartySyncState = {
@@ -831,6 +874,8 @@ export function usePartyRoom(
         activeRouteR5,
         activeRoutePulls,
         plannedEternalLevel,
+        members,
+        eternalChecklist,
         liveRun,
       };
 
@@ -845,12 +890,27 @@ export function usePartyRoom(
             stripUndefined(liveRun)
           ).catch(() => {});
         }
-        if (routeTriggered && authUserRef.current && next.ownerUids.length >= 1) {
+        if (
+          (routeTriggered || checklistUpdated) &&
+          authUserRef.current &&
+          next.ownerUids.length >= 1
+        ) {
           void setDoc(
             doc(services.firestore, 'rooms', roomId),
             stripUndefined(extractSharedDoc(next)),
             { merge: true }
           ).catch(() => {});
+        }
+        if (updatedMemberIds.size > 0 && authUserRef.current) {
+          for (const memberId of updatedMemberIds) {
+            const updatedMember = next.members.find((m) => m.id === memberId);
+            if (updatedMember) {
+              void setDoc(
+                doc(services.firestore, 'rooms', roomId, 'members', updatedMember.id),
+                stripUndefined(updatedMember)
+              ).catch(() => {});
+            }
+          }
         }
         return;
       }

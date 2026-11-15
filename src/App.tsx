@@ -12,7 +12,10 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { AuthAccountModal } from './components/AuthAccountModal';
 import { BisGearManager } from './components/BisGearManager';
-import { EternalScoreView } from './components/EternalScoreView';
+import {
+  EternalScoreView,
+  type LogPartyRunInput,
+} from './components/EternalScoreView';
 import type { PlannerSyncPayload } from './components/MethodRouteEmbed';
 import { PartyRosterBar } from './components/PartyRosterBar';
 import { PunchListSplash } from './components/PunchListSplash';
@@ -22,6 +25,10 @@ import {
   DUNGEONS,
   formatPartyNameFromRoomId,
 } from './domain/catalog';
+import {
+  computePartyProgressionSummary,
+  mergeHigherDungeonClear,
+} from './domain/dungeonScore';
 import {
   claimMemberSlot,
   claimUnownedPartyState,
@@ -35,6 +42,7 @@ import {
 } from './domain/ownership';
 import {
   computeDungeonPunchList,
+  predictEmissaryVariant,
   resolveRoutesForDungeon,
   selectBestRoute,
 } from './domain/punchList';
@@ -42,6 +50,7 @@ import type {
   BisItemEntry,
   BossVariant,
   HeroId,
+  MemberDungeonClear,
   PullNode,
   RoutePlan,
 } from './domain/types';
@@ -133,6 +142,11 @@ export function App() {
 
   const punch = useMemo(
     () => computeDungeonPunchList(state.members, DUNGEONS),
+    [state.members]
+  );
+
+  const partyProgression = useMemo(
+    () => computePartyProgressionSummary(state.members, DUNGEONS),
     [state.members]
   );
 
@@ -632,6 +646,128 @@ export function App() {
     }));
   };
 
+  const handleUpsertMemberClear = (
+    memberId: string,
+    dungeonSlug: string,
+    clear: MemberDungeonClear | null
+  ) => {
+    const target = state.members.find((m) => m.id === memberId);
+    if (!target) return;
+    const perms = evaluateMemberPermissions(target, ownershipCtx);
+    if (!perms.canToggleLootAndParty && ownershipCtx.authEnforced) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    commitState((prev) => {
+      const updatedMembers = prev.members.map((m) => {
+        if (m.id !== memberId) return m;
+        const nextClears = { ...(m.dungeonClears ?? {}) };
+        if (clear === null) {
+          delete nextClears[dungeonSlug];
+        } else {
+          nextClears[dungeonSlug] = clear;
+        }
+        return {
+          ...m,
+          dungeonClears: nextClears,
+        };
+      });
+
+      const updatedChecklist =
+        clear && clear.league === 'Eternal'
+          ? prev.eternalChecklist.map((r) =>
+              r.dungeonSlug === dungeonSlug
+                ? {
+                    ...r,
+                    currentScore: Math.max(r.currentScore, clear.score),
+                    finished:
+                      r.finished || (clear.timed && clear.level >= r.targetLevel),
+                  }
+                : r
+            )
+          : prev.eternalChecklist;
+
+      return {
+        ...prev,
+        members: updatedMembers,
+        eternalChecklist: updatedChecklist,
+      };
+    });
+  };
+
+  const handleLogPartyClear = (input: LogPartyRunInput) => {
+    if (ownershipCtx.authEnforced && !auth.user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    const incoming: MemberDungeonClear = {
+      dungeonSlug: input.dungeonSlug,
+      league: input.league,
+      level: input.level,
+      timed: input.timed,
+      score: input.score,
+      updatedAtIso: new Date().toISOString(),
+    };
+
+    commitState((prev) => {
+      const hasInParty = prev.members.some((m) => m.inParty);
+      const updatedMembers = prev.members.map((m) => {
+        const matchesScope =
+          input.targetScope === 'in-party'
+            ? hasInParty
+              ? m.inParty
+              : true
+            : m.id === input.targetScope;
+        if (!matchesScope) return m;
+
+        const perms = evaluateMemberPermissions(m, {
+          authEnforced: auth.isFirebaseConfigured,
+          currentUser: auth.user,
+          leadMemberId: prev.leadMemberId,
+          members: prev.members,
+          partyOwnerUids: prev.ownerUids,
+        });
+        if (!perms.canToggleLootAndParty && auth.isFirebaseConfigured) {
+          return m;
+        }
+
+        const merged = mergeHigherDungeonClear(
+          m.dungeonClears?.[input.dungeonSlug],
+          incoming
+        );
+        return {
+          ...m,
+          dungeonClears: {
+            ...(m.dungeonClears ?? {}),
+            [input.dungeonSlug]: merged,
+          },
+        };
+      });
+
+      const updatedChecklist =
+        input.league === 'Eternal'
+          ? prev.eternalChecklist.map((r) =>
+              r.dungeonSlug === input.dungeonSlug
+                ? {
+                    ...r,
+                    currentScore: Math.max(r.currentScore, input.score),
+                    finished:
+                      r.finished || (input.timed && input.level >= r.targetLevel),
+                  }
+                : r
+            )
+          : prev.eternalChecklist;
+
+      return {
+        ...prev,
+        members: updatedMembers,
+        eternalChecklist: updatedChecklist,
+      };
+    });
+  };
+
   const displayPartyName =
     state.partyName ?? formatPartyNameFromRoomId(roomId);
 
@@ -647,7 +783,7 @@ export function App() {
           <div>
             <h1 className="brand-title">Fellowshipper</h1>
             <p className="brand-subtitle">
-              {displayPartyName} · Owned Party Punch List, Season 2 Routes &amp; BIS
+              {displayPartyName} · Owned Party Punch List, Season 2 Routes, BIS &amp; Scores
             </p>
           </div>
         </div>
@@ -691,7 +827,12 @@ export function App() {
             onClick={() => setActiveTab('eternal')}
           >
             <Trophy size={15} />
-            10k Score
+            Scores &amp; Clears
+            {partyProgression.averageScore > 0 && (
+              <span className="tab-count">
+                {partyProgression.averageScore.toLocaleString()}
+              </span>
+            )}
           </button>
         </nav>
 
@@ -867,6 +1008,7 @@ export function App() {
         onClaimUnownedParty={handleClaimPartyOwnership}
         onJoinParty={addMember}
         onOpenAuthModal={() => setAuthModalOpen(true)}
+        onOpenScoresTab={() => setActiveTab('eternal')}
         onToggleInParty={(memberId) =>
           commitState((prev) => ({
             ...prev,
@@ -1008,7 +1150,11 @@ export function App() {
 
         {activeTab === 'eternal' && (
           <EternalScoreView
+            members={state.members}
+            ownershipCtx={ownershipCtx}
             checklist={state.eternalChecklist}
+            onUpsertMemberClear={handleUpsertMemberClear}
+            onLogPartyClear={handleLogPartyClear}
             onToggleFinished={(slug) =>
               commitState((prev) => ({
                 ...prev,
@@ -1028,15 +1174,24 @@ export function App() {
             onUpdateTargetLevel={(slug, targetLevel) =>
               commitState((prev) => ({
                 ...prev,
-                eternalChecklist: prev.eternalChecklist.map((r) =>
-                  r.dungeonSlug === slug ? { ...r, targetLevel } : r
-                ),
+                eternalChecklist: prev.eternalChecklist.map((r) => {
+                  if (r.dungeonSlug !== slug) return r;
+                  const dungeon = DUNGEONS.find((d) => d.slug === slug);
+                  return {
+                    ...r,
+                    targetLevel,
+                    bossVariant: dungeon
+                      ? predictEmissaryVariant(dungeon, targetLevel)
+                      : r.bossVariant,
+                  };
+                }),
               }))
             }
             onSyncRoute={(slug, variant, level) => {
               syncDungeonAndVariant(slug, variant, level);
               setActiveTab('routes');
             }}
+            onOpenAuthModal={() => setAuthModalOpen(true)}
           />
         )}
       </main>

@@ -1,4 +1,5 @@
 import { createIdleLiveRunState, DUNGEONS } from './catalog.ts';
+import type { CompletedDungeonClearTrigger } from './dungeonScore.ts';
 import type {
   BossVariant,
   CombatFeedEntry,
@@ -42,6 +43,7 @@ export type ParsedCombatEvent =
       timestampIso: string;
       dungeonName: string;
       zoneId: number;
+      difficultyRaw?: number | null;
       success: boolean;
       durationSeconds: number | null;
       timedSuccess: boolean;
@@ -82,6 +84,7 @@ export interface AutoRouteTrigger {
 export interface CombatReductionResult {
   nextRun: LiveRunState;
   autoRouteTrigger: AutoRouteTrigger | null;
+  completedClearTrigger?: CompletedDungeonClearTrigger | null;
 }
 
 const STRONGHOLD_ZONE_ID = 17;
@@ -257,6 +260,7 @@ export function parseCombatLogLine(rawLine: string): ParsedCombatEvent | null {
       timestampIso,
       dungeonName: stripQuotes(parts[2] ?? ''),
       zoneId,
+      difficultyRaw: parseIntSafe(parts[4]),
       success: parts[6]?.trim() === '1',
       durationSeconds: parseFloatSafe(parts[8]),
       timedSuccess: parts[9]?.trim() === '1',
@@ -526,10 +530,35 @@ export function reduceCombatEvent(
   }
 
   if (event.kind === 'DUNGEON_END') {
+    const fallbackDungeon = findDungeonByZoneOrName(
+      event.zoneId,
+      event.dungeonName
+    );
+    const resolvedSlug = current.dungeonSlug ?? fallbackDungeon?.slug ?? null;
+    const resolvedDifficultyRaw =
+      current.difficultyRaw ?? event.difficultyRaw ?? null;
+    const participantNames = Object.values(current.units)
+      .filter((u) => u.isPlayer)
+      .map((u) => u.name);
+
+    const completedClearTrigger: CompletedDungeonClearTrigger | null =
+      event.success && resolvedSlug && resolvedDifficultyRaw && resolvedDifficultyRaw > 0
+        ? {
+            dungeonSlug: resolvedSlug,
+            difficultyRaw: resolvedDifficultyRaw,
+            timedSuccess: event.timedSuccess,
+            durationSeconds: event.durationSeconds,
+            participantNames,
+            timestampIso: event.timestampIso,
+          }
+        : null;
+
     return {
       nextRun: {
         ...current,
         status: 'completed',
+        dungeonSlug: resolvedSlug,
+        difficultyRaw: resolvedDifficultyRaw,
         activeEncounter: null,
         durationSeconds: event.durationSeconds,
         timedSuccess: event.timedSuccess,
@@ -544,6 +573,7 @@ export function reduceCombatEvent(
         }),
       },
       autoRouteTrigger: null,
+      completedClearTrigger,
     };
   }
 

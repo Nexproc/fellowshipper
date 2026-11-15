@@ -136,18 +136,39 @@ export interface AuthUserInfo {
   provider: AuthProviderKind;
 }
 
+export type DifficultyLeague =
+  | 'Contender'
+  | 'Adept'
+  | 'Champion'
+  | 'Paragon'
+  | 'Eternal';
+
+export interface MemberDungeonClear {
+  dungeonSlug: string;
+  league: DifficultyLeague;
+  /** 1..7 for Contender/Adept/Champion/Paragon; 1..60+ for Eternal */
+  level: number;
+  timed: boolean;
+  /** Dungeon rating earned on this map (auto-estimated from tier + timed, or manually overridden) */
+  score: number;
+  bestDurationSeconds?: number | null;
+  updatedAtIso?: string;
+}
+
 export interface MemberProfile {
   id: string;
   displayName: string;
   inParty: boolean;
   activeCharacterId: string;
   characters: CharacterProfile[];
+  /** Per-dungeon highest cleared difficulty and dungeon score keyed by dungeonSlug */
+  dungeonClears?: Record<string, MemberDungeonClear>;
   /** Firebase Auth UID that owns this roster profile (null/undefined until claimed) */
   ownerUid?: string | null;
   ownerDisplayName?: string | null;
   ownerProvider?: AuthProviderKind | null;
   ownerPhotoUrl?: string | null;
-  /** When true, the current Party Lead can also check off BIS drops during a run */
+  /** When true, the current Party Lead can also check off BIS drops and log party clears during a run */
   allowPartyLeadLootCheck?: boolean;
 }
 

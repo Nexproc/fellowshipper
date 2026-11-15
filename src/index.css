@@ -1154,3 +1154,169 @@ a:hover {
   }
 }
 
+/* Difficulty League Badges & Party Dungeon Score Matrix */
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.tier-none {
+  background: var(--bg-canvas);
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
+  font-weight: 500;
+}
+
+.tier-Contender {
+  background: hsl(212 18% 56% / 0.14);
+  color: hsl(210 22% 78%);
+  border-color: hsl(212 18% 56% / 0.32);
+}
+
+.tier-Adept {
+  background: var(--jade-soft);
+  color: var(--jade-400);
+  border-color: hsl(161 54% 46% / 0.35);
+}
+
+.tier-Champion {
+  background: var(--steel-soft);
+  color: var(--steel-400);
+  border-color: hsl(199 66% 58% / 0.35);
+}
+
+.tier-Paragon {
+  background: var(--gold-soft);
+  color: var(--gold-400);
+  border-color: hsl(38 84% 56% / 0.38);
+}
+
+.tier-Eternal {
+  background: linear-gradient(
+    135deg,
+    hsl(36 92% 55% / 0.2),
+    hsl(14 84% 54% / 0.18)
+  );
+  color: hsl(38 96% 70%);
+  border-color: hsl(32 88% 56% / 0.48);
+}
+
+.roster-score-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.roster-score-strip:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.score-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
+}
+
+.score-member-card {
+  padding: 13px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.score-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.score-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold-500), var(--jade-400));
+  transition: width 220ms ease;
+}
+
+.log-run-bar {
+  padding: 12px 18px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.member-clear-cell {
+  min-width: 150px;
+  vertical-align: top;
+}
+
+.member-clear-btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  text-align: left;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.member-clear-btn:hover:not(:disabled) {
+  border-color: var(--gold-500);
+  background: var(--bg-elevated);
+}
+
+.member-clear-btn:disabled {
+  cursor: default;
+  opacity: 0.88;
+}
+
+.member-clear-btn.is-lowest-map {
+  border-color: hsl(38 84% 56% / 0.42);
+}
+
+.member-clear-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--gold-500);
+  min-width: 185px;
+}
+
+

@@ -5,6 +5,7 @@ import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import { BUILT_IN_ROUTES, createDefaultPartyState } from '../src/domain/catalog.ts';
 import { parseCombatLogLine, reduceCombatEvent } from '../src/domain/combatLogParser.ts';
+import { applyCombatClearToPartyState } from '../src/domain/dungeonScore.ts';
 import { selectBestRoute } from '../src/domain/punchList.ts';
 import type { MapPing, OnlinePresence, PartySyncState } from '../src/domain/types.ts';
 
@@ -97,6 +98,8 @@ export class PartyRoomHub {
     let activeRouteR5 = room.activeRouteR5 ?? null;
     let activeRoutePulls = room.activeRoutePulls ?? null;
     let plannedEternalLevel = room.plannedEternalLevel;
+    let members = room.members;
+    let eternalChecklist = room.eternalChecklist;
 
     const allRoutes = [...room.customRoutes, ...BUILT_IN_ROUTES];
 
@@ -122,6 +125,19 @@ export class PartyRoomHub {
           activeRoutePulls = null;
         }
       }
+
+      if (reduced.completedClearTrigger) {
+        const applied = applyCombatClearToPartyState(
+          {
+            ...room,
+            members,
+            eternalChecklist,
+          },
+          reduced.completedClearTrigger
+        );
+        members = applied.members;
+        eternalChecklist = applied.eternalChecklist;
+      }
     }
 
     room = {
@@ -133,6 +149,8 @@ export class PartyRoomHub {
       activeRouteR5,
       activeRoutePulls,
       plannedEternalLevel,
+      members,
+      eternalChecklist,
       liveRun,
     };
     this.rooms.set(roomId, room);

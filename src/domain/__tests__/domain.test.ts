@@ -470,5 +470,177 @@ describe('GCP Firebase Account Ownership & Per-Character Permissions', () => {
   });
 });
 
+describe('Per-Member Dungeon Score & Highest Cleared Difficulty Tracking', () => {
+  it('round-trips Fellowship difficulty IDs and strictly orders Contender < Adept < Champion < Paragon < Eternal', async () => {
+    const {
+      compareDungeonClears,
+      DIFFICULTY_LEAGUES,
+      estimateDungeonClearScore,
+      fromDifficultyRaw,
+      mergeHigherDungeonClear,
+      toDifficultyRaw,
+    } = await import('../dungeonScore');
+
+    for (const league of DIFFICULTY_LEAGUES) {
+      const levels = league === 'Eternal' ? [1, 8, 16, 35] : [1, 4, 7];
+      for (const lvl of levels) {
+        const raw = toDifficultyRaw(league, lvl);
+        expect(fromDifficultyRaw(raw)).toEqual({ league, level: lvl });
+      }
+    }
+
+    // Eternal 1 matches computeEternalTargetScore(1) === 615 and Eternal 16 === 840
+    expect(estimateDungeonClearScore('Eternal', 1, true)).toBe(615);
+    expect(estimateDungeonClearScore('Eternal', 16, true)).toBe(840);
+    expect(estimateDungeonClearScore('Paragon', 7, true)).toBe(585);
+    expect(estimateDungeonClearScore('Champion', 7, true)).toBe(465);
+    expect(estimateDungeonClearScore('Adept', 7, true)).toBe(345);
+    expect(estimateDungeonClearScore('Contender', 7, true)).toBe(225);
+
+    const paragon7 = {
+      dungeonSlug: 'stormwatch',
+      league: 'Paragon' as const,
+      level: 7,
+      timed: true,
+      score: 585,
+    };
+    const eternal1Overtime = {
+      dungeonSlug: 'stormwatch',
+      league: 'Eternal' as const,
+      level: 1,
+      timed: false,
+      score: 600,
+    };
+    const eternal1Timed = {
+      dungeonSlug: 'stormwatch',
+      league: 'Eternal' as const,
+      level: 1,
+      timed: true,
+      score: 615,
+    };
+
+    expect(compareDungeonClears(eternal1Overtime, paragon7)).toBeGreaterThan(0);
+    expect(compareDungeonClears(eternal1Timed, eternal1Overtime)).toBeGreaterThan(0);
+
+    // Running an easier Paragon 7 farm key after clearing Eternal 1 Timed never regresses personal best
+    const mergedAfterFarm = mergeHigherDungeonClear(eternal1Timed, paragon7);
+    expect(mergedAfterFarm.league).toBe('Eternal');
+    expect(mergedAfterFarm.level).toBe(1);
+    expect(mergedAfterFarm.timed).toBe(true);
+    expect(mergedAfterFarm.score).toBe(615);
+  });
+
+  it('computes per-member and party-wide Dungeon Score summaries and auto-records live CombatLog clears', async () => {
+    const { createOwnedPartyState } = await import('../catalog');
+    const {
+      applyCombatClearToPartyState,
+      computePartyProgressionSummary,
+      formatDungeonClearLabel,
+    } = await import('../dungeonScore');
+
+    const baseParty = createOwnedPartyState({
+      roomId: 'score-test',
+      partyName: 'Push Squad',
+      owner: {
+        uid: 'uid-nick',
+        displayName: 'Nick',
+        provider: 'discord',
+        photoUrl: null,
+      },
+      memberDisplayName: 'Nick',
+      heroId: 'helena',
+    });
+
+    const fourStack = {
+      ...baseParty,
+      members: [
+        baseParty.members[0],
+        {
+          id: 'andy',
+          displayName: 'Andy',
+          inParty: true,
+          activeCharacterId: 'andy-sylvie',
+          characters: [
+            {
+              id: 'andy-sylvie',
+              heroId: 'sylvie' as const,
+              activeBisSetId: 'set-a',
+              bisSets: [{ id: 'set-a', name: 'Season 2 BIS', items: [] }],
+            },
+          ],
+          dungeonClears: {
+            stormwatch: {
+              dungeonSlug: 'stormwatch',
+              league: 'Paragon' as const,
+              level: 6,
+              timed: true,
+              score: 570,
+            },
+          },
+        },
+      ],
+    };
+
+    // 1. Stream Legacy S1 Drakheim Eternal 16 CombatLog -> records personal best & allTimeScore without polluting S2 checklist
+    let runState = createIdleLiveRunState();
+    let clearTrigger = null;
+    for (const line of SAMPLE_DRAKHEIM_COMBAT_LOG) {
+      const ev = parseCombatLogLine(line);
+      if (!ev) continue;
+      const reduced = reduceCombatEvent(runState, ev);
+      runState = reduced.nextRun;
+      if (reduced.completedClearTrigger) {
+        clearTrigger = reduced.completedClearTrigger;
+      }
+    }
+
+    expect(clearTrigger).not.toBeNull();
+    expect(clearTrigger?.dungeonSlug).toBe('ransack-of-drakheim');
+    expect(clearTrigger?.difficultyRaw).toBe(48); // Eternal 16
+    expect(clearTrigger?.timedSuccess).toBe(true);
+
+    const afterLegacyClear = applyCombatClearToPartyState(fourStack, clearTrigger!);
+    expect(afterLegacyClear.updatedMemberIds).toEqual(['nick', 'andy']);
+    expect(afterLegacyClear.checklistUpdated).toBe(false);
+
+    // 2. Stream a Season 2 Stormwatch Eternal 16 timed clear -> upgrades Andy's Paragon 6 (570) -> Eternal 16 (840) and updates S2 checklist
+    const swStart = parseCombatLogLine(
+      '2026-11-15T21:00:00.000-08:00|DUNGEON_START|"Stormwatch"|12|48|[6,22]|0'
+    )!;
+    const swEnd = parseCombatLogLine(
+      '2026-11-15T21:14:30.000-08:00|DUNGEON_END|"Stormwatch"|12|48|[6,22]|1|0|870.0|1'
+    )!;
+    const swMid = reduceCombatEvent(createIdleLiveRunState(), swStart).nextRun;
+    const swFinal = reduceCombatEvent(swMid, swEnd);
+    expect(swFinal.completedClearTrigger?.dungeonSlug).toBe('stormwatch');
+
+    const afterS2Clear = applyCombatClearToPartyState(
+      {
+        ...fourStack,
+        members: afterLegacyClear.members,
+        eternalChecklist: afterLegacyClear.eternalChecklist,
+      },
+      swFinal.completedClearTrigger!
+    );
+    expect(afterS2Clear.updatedMemberIds).toEqual(['nick', 'andy']);
+    expect(afterS2Clear.checklistUpdated).toBe(true);
+
+    const partyProg = computePartyProgressionSummary(afterS2Clear.members, DUNGEONS);
+    const nickSummary = partyProg.memberSummaries.find((s) => s.memberId === 'nick')!;
+    const andySummary = partyProg.memberSummaries.find((s) => s.memberId === 'andy')!;
+
+    // Season 2 score counts Stormwatch (840); allTimeScore includes Legacy S1 Drakheim (840 + 840 = 1,680)
+    expect(nickSummary.totalScore).toBe(840);
+    expect(nickSummary.allTimeScore).toBe(1680);
+    expect(formatDungeonClearLabel(nickSummary.highestClear)).toBe('Eternal 16 ★');
+
+    expect(andySummary.totalScore).toBe(840);
+    expect(andySummary.allTimeScore).toBe(1680);
+    expect(formatDungeonClearLabel(andySummary.highestClear)).toBe('Eternal 16 ★');
+    expect(partyProg.averageScore).toBe(840);
+  });
+});
+
+
 
 
