@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 .fellowshipper-data
+.firebase
+.firebaserc
+firebase-debug.log*
+*service-account*.json
 
 # Editor directories and files
 .vscode/*

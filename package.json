@@ -11,7 +11,8 @@
     "tail-logs": "tsx scripts/tail-combat-logs.ts",
     "test": "vitest run",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "provision:gcp": "bash scripts/provision-gcp.sh"
   },
   "dependencies": {
     "firebase": "^13.3.0",
