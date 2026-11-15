@@ -45,6 +45,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/planner/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ]
   }

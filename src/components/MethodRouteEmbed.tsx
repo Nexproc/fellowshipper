@@ -81,7 +81,7 @@ function buildPlannerUrl(
     params.set('embed', '1');
     params.set('clean', '1');
   }
-  params.set('v', 'fp2');
+  params.set('v', 'fp3');
   params.set('dungeon', levelId);
   const hash = buildPlannerShareHash(r5Code);
   return `${normalizedBase}planner/index.html?${params.toString()}${hash}`;
