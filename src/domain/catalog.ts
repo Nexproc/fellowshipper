@@ -1,3 +1,4 @@
+import { SEASON_2_ROUTES } from './season2Routes.ts';
 import type {
   DungeonDefinition,
   EternalChecklistRow,
@@ -101,12 +102,32 @@ function makeCapstonePulls(bosses: string[], killTarget: number): PullNode[] {
   ];
 }
 
+function s2Pulls(slug: string, fallback: PullNode[]): PullNode[] {
+  return SEASON_2_ROUTES[slug]?.Regular?.pulls ?? fallback;
+}
+
+function enrichSeason2Routes(routes: readonly RoutePlan[]): readonly RoutePlan[] {
+  return routes.map((route) => {
+    const bySlug = SEASON_2_ROUTES[route.dungeonSlug];
+    if (!bySlug) return route;
+    const match = bySlug[route.variant] ?? bySlug.Regular;
+    if (!match) return route;
+    return {
+      ...route,
+      r5Code: route.r5Code ?? match.r5Code,
+      pulls: route.pulls ?? match.pulls,
+    };
+  });
+}
+
 export const DUNGEONS: readonly DungeonDefinition[] = [
   {
     zoneId: 23,
     slug: 'ransack-of-drakheim',
     name: 'Ransack of Drakheim',
     category: 'Dungeon',
+    seasonStatus: 'legacy-s1',
+    levelId: null,
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_VikingVillageAttack_Stitched.jpg?v=1',
     bosses: ['Chilgar the Drowned', 'Fodir Kaldur', 'Auga Handhafi the Blind'],
     killScoreTarget: 260,
@@ -122,66 +143,76 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     slug: 'stormwatch',
     name: 'Stormwatch',
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.NightPatrol',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_NightPatrol_Stitched.jpg?v=1',
     bosses: ['Warlord Brogg'],
     killScoreTarget: 155,
-    targetSeconds: 848,
+    targetSeconds: 840,
     everyXLevels: 7 / 3,
-    firstBoss: 'Krumbug',
+    firstBoss: 'Ghorn',
     firstLevel: 3,
     worldBounds: { minX: -4500, maxX: 14500, minY: -5000, maxY: 22000 },
-    defaultPulls: makeAdventurePulls(['Warlord Brogg'], 155),
+    defaultPulls: s2Pulls('stormwatch', makeAdventurePulls(['Warlord Brogg'], 155)),
   },
   {
     zoneId: 6,
     slug: 'empyrean-sands',
     name: 'Empyrean Sands',
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.DesertDunes',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_DesertDunes_Stitched.jpg?v=1',
     bosses: ['Sin-Magir'],
-    killScoreTarget: 130,
-    targetSeconds: 744,
+    killScoreTarget: 140,
+    targetSeconds: 760,
     everyXLevels: 7 / 3,
     firstBoss: 'Eira',
     firstLevel: 1,
     worldBounds: { minX: -6000, maxX: 14000, minY: -6000, maxY: 18000 },
-    defaultPulls: makeAdventurePulls(['Sin-Magir'], 130),
+    defaultPulls: s2Pulls('empyrean-sands', makeAdventurePulls(['Sin-Magir'], 140)),
   },
   {
     zoneId: 21,
     slug: 'urrak-markets',
     name: 'Urrak Markets',
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.UrrakMarkets',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_UrrakMarkets_0.jpg?v=1',
     bosses: ['Drazhul the Fleshbroker', 'Slavetrader Brull'],
     killScoreTarget: 160,
-    targetSeconds: 781,
+    targetSeconds: 815,
     everyXLevels: 7 / 3,
-    firstBoss: 'Krumbug',
+    firstBoss: 'Ghorn',
     firstLevel: 2,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
-    defaultPulls: makeAdventurePulls(['Drazhul the Fleshbroker', 'Slavetrader Brull'], 160),
+    defaultPulls: s2Pulls('urrak-markets', makeAdventurePulls(['Drazhul the Fleshbroker', 'Slavetrader Brull'], 160)),
   },
   {
     zoneId: 7,
     slug: 'cithrels-fall',
     name: "Cithrel's Fall",
     category: 'Dungeon',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.FrozenKingdom',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_FrozenKingdom_0.jpg?v=1',
     bosses: ['Ancient Koros', 'Noor, The Betrayer', 'Cithrel'],
     killScoreTarget: 188,
-    targetSeconds: 1671,
+    targetSeconds: 1620,
     everyXLevels: 4,
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -8000, maxX: 16000, minY: -8000, maxY: 26000 },
-    defaultPulls: makeCapstonePulls(['Ancient Koros', 'Noor, The Betrayer', 'Cithrel'], 188),
+    defaultPulls: s2Pulls('cithrels-fall', makeCapstonePulls(['Ancient Koros', 'Noor, The Betrayer', 'Cithrel'], 188)),
   },
   {
     zoneId: 11,
     slug: 'everdawn-grove',
     name: 'Everdawn Grove',
     category: 'Adventure',
+    seasonStatus: 'legacy-s1',
+    levelId: null,
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_MythicForest_0.jpg?v=1',
     bosses: ['Malgut the Fetid', 'Akari the Everdawn Lord'],
     killScoreTarget: 110,
@@ -197,21 +228,25 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     slug: 'godfall-quarry',
     name: 'Godfall Quarry',
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.ElfMines',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_ElfMines_0.jpg?v=1',
     bosses: ['Vaerith Vorn', 'Godfall Titan'],
-    killScoreTarget: 130,
-    targetSeconds: 738,
+    killScoreTarget: 135,
+    targetSeconds: 780,
     everyXLevels: 7 / 3,
-    firstBoss: 'Krumbug',
+    firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 18000 },
-    defaultPulls: makeAdventurePulls(['Vaerith Vorn', 'Godfall Titan'], 130),
+    defaultPulls: s2Pulls('godfall-quarry', makeAdventurePulls(['Vaerith Vorn', 'Godfall Titan'], 135)),
   },
   {
     zoneId: 5,
     slug: 'the-heart-of-tuzari',
     name: 'The Heart of Tuzari',
     category: 'Dungeon',
+    seasonStatus: 'legacy-s1',
+    levelId: null,
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_DemonicRitual_Stitched.jpg?v=1',
     bosses: ["Moar'gore, Master of Sacrifice", "Prophet Ez'rath", "Vun'Kahr, the Thorned Maw"],
     killScoreTarget: 238,
@@ -227,36 +262,42 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     slug: 'silken-hollow',
     name: 'Silken Hollow',
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.SpiderForest',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_SpiderForest_Stitched.jpg?v=1',
     bosses: ['Vexira, Mother of Nightmares'],
     killScoreTarget: 168,
-    targetSeconds: 812,
+    targetSeconds: 820,
     everyXLevels: 7 / 3,
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 19000 },
-    defaultPulls: makeAdventurePulls(['Vexira, Mother of Nightmares'], 168),
+    defaultPulls: s2Pulls('silken-hollow', makeAdventurePulls(['Vexira, Mother of Nightmares'], 168)),
   },
   {
     zoneId: 13,
     slug: 'wraithtide-vault',
     name: 'Wraithtide Vault',
     category: 'Dungeon',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.PirateRaid',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_PirateRaid_Stitched.jpg?v=1',
-    bosses: ['First Mate Marrow', 'Deathless Katrine', "Bael'Aurum"],
+    bosses: ['Deathless Katrine', 'First Mate Marrow', "Bael'Aurum"],
     killScoreTarget: 281,
-    targetSeconds: 1782,
+    targetSeconds: 1770,
     everyXLevels: 4,
     firstBoss: 'Eira',
     firstLevel: 3,
     worldBounds: { minX: -8000, maxX: 19000, minY: -8000, maxY: 30000 },
-    defaultPulls: makeCapstonePulls(['First Mate Marrow', 'Deathless Katrine', "Bael'Aurum"], 281),
+    defaultPulls: s2Pulls('wraithtide-vault', makeCapstonePulls(['Deathless Katrine', 'First Mate Marrow', "Bael'Aurum"], 281)),
   },
   {
     zoneId: 8,
     slug: 'wyrmheart',
     name: 'Wyrmheart',
     category: 'Adventure',
+    seasonStatus: 'legacy-s1',
+    levelId: null,
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_IceCave_Stitched.jpg?v=1',
     bosses: ['Apostate Veras'],
     killScoreTarget: 109,
@@ -272,6 +313,8 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     slug: 'sailors-abyss',
     name: "Sailor's Abyss",
     category: 'Adventure',
+    seasonStatus: 'legacy-s1',
+    levelId: null,
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_ShipGraveyard_0.jpg?v=1',
     bosses: ['Sinthara'],
     killScoreTarget: 131,
@@ -287,150 +330,192 @@ export const DUNGEONS: readonly DungeonDefinition[] = [
     slug: 'scryers-peak',
     name: "Scryer's Peak",
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.SnowPeak',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_SnowPeak_0.jpg?v=1',
     bosses: ['Overlord Varux'],
-    killScoreTarget: 180,
-    targetSeconds: 807,
+    killScoreTarget: 160,
+    targetSeconds: 820,
     everyXLevels: 7 / 3,
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
-    defaultPulls: makeAdventurePulls(['Overlord Varux'], 180),
+    defaultPulls: s2Pulls('scryers-peak', makeAdventurePulls(['Overlord Varux'], 160)),
   },
   {
     zoneId: 29,
     slug: 'ruins-of-regath',
     name: 'Ruins of Regath',
     category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.MoorCastle',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_MoorCastle_Stitched.jpg?v=1',
     bosses: ['Xurath, Fist of the Warden'],
-    killScoreTarget: 155,
-    targetSeconds: 900,
+    killScoreTarget: 152,
+    targetSeconds: 870,
     everyXLevels: 7 / 3,
     firstBoss: 'Eira',
     firstLevel: 1,
     worldBounds: { minX: -5000, maxX: 15000, minY: -5000, maxY: 20000 },
-    defaultPulls: makeAdventurePulls(['Xurath, Fist of the Warden'], 155),
+    defaultPulls: s2Pulls('ruins-of-regath', makeAdventurePulls(['Xurath, Fist of the Warden'], 152)),
   },
   {
     zoneId: 30,
     slug: 'xul-the-blood-monolith',
     name: 'Xul, The Blood Monolith',
     category: 'Pinnacle',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.SandTomb',
     mapImageUrl: 'https://www.method.gg/images/games/database/fellowship/maps/T_Map_SandTomb_Stitched.jpg?v=1',
     bosses: [
+      "Xul'vorith, Sentinel of the Bloodbound Gate",
       'Han-Eth, Sentry of Xul',
       "Vel'korath the Sanctified",
-      "Xul'vorith, Bloodbound Sentinel",
     ],
-    killScoreTarget: 265,
+    killScoreTarget: 260,
     targetSeconds: 1700,
     everyXLevels: 4,
     firstBoss: 'Ghorn',
     firstLevel: 1,
     worldBounds: { minX: -8000, maxX: 19000, minY: -8000, maxY: 30000 },
-    defaultPulls: makeCapstonePulls(
-      ['Han-Eth, Sentry of Xul', "Vel'korath the Sanctified", "Xul'vorith, Bloodbound Sentinel"],
-      265
+    defaultPulls: s2Pulls(
+      'xul-the-blood-monolith',
+      makeCapstonePulls(
+        ["Xul'vorith, Sentinel of the Bloodbound Gate", 'Han-Eth, Sentry of Xul', "Vel'korath the Sanctified"],
+        260
+      )
     ),
+  },
+  {
+    zoneId: 32,
+    slug: 'crown-of-the-wild',
+    name: 'Crown of the Wild',
+    category: 'Adventure',
+    seasonStatus: 'season-2',
+    levelId: 'Level.ID.TreeVillage',
+    mapImageUrl: 'planner/images/dungeons/maps/treevillage-t_treevillage_global-game.avif',
+    bosses: ['Scrofa, Wild Incarnate'],
+    killScoreTarget: 135,
+    targetSeconds: 920,
+    everyXLevels: 7 / 3,
+    firstBoss: 'Ghorn',
+    firstLevel: 1,
+    worldBounds: { minX: -6000, maxX: 16000, minY: -6000, maxY: 22000 },
+    defaultPulls: s2Pulls('crown-of-the-wild', makeAdventurePulls(['Scrofa, Wild Incarnate'], 135)),
   },
 ] as const;
 
 /**
- * Complete library of Method.gg route plans imported directly from
- * Fellowship Dungeon Sheets (Routes, Xmas Routes, and Spider Mount List tabs).
+ * Season 2 game-data routes (build 26122410) + archived spreadsheet routes.
  */
-export const BUILT_IN_ROUTES: readonly RoutePlan[] = [
-  // Cithrel's Fall
-  { id: 'cf-reg', dungeonSlug: 'cithrels-fall', variant: 'Regular', label: "Cithrel's Fall — Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/0Y02h7oRFj8RJ3TL', sourceTag: 'Core Routes' },
-  { id: 'cf-ghorn', dungeonSlug: 'cithrels-fall', variant: 'Ghorn', label: "Cithrel's Fall — Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/mnRtosTAOjOYYDjM', sourceTag: 'Core Routes', recommendedLevel: 13 },
-  { id: 'cf-eira', dungeonSlug: 'cithrels-fall', variant: 'Eira', label: "Cithrel's Fall — Eira (+90s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/MfspOJ6zYZF2R6rK', sourceTag: 'Core Routes' },
+export const BUILT_IN_ROUTES: readonly RoutePlan[] = enrichSeason2Routes([
+  // Cithrel's Fall (Season 2)
+  { id: 'cf-reg', dungeonSlug: 'cithrels-fall', variant: 'Regular', label: "Cithrel's Fall — S2 Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/0Y02h7oRFj8RJ3TL', sourceTag: 'Season 2' },
+  { id: 'cf-ghorn', dungeonSlug: 'cithrels-fall', variant: 'Ghorn', label: "Cithrel's Fall — S2 Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/mnRtosTAOjOYYDjM', sourceTag: 'Season 2', recommendedLevel: 13 },
+  { id: 'cf-eira', dungeonSlug: 'cithrels-fall', variant: 'Eira', label: "Cithrel's Fall — S2 Eira / Witch (+90s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/MfspOJ6zYZF2R6rK', sourceTag: 'Season 2' },
+  { id: 'cf-emp', dungeonSlug: 'cithrels-fall', variant: 'Empowered', label: "Cithrel's Fall — S2 Empowered Minions", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall', sourceTag: 'Season 2' },
   { id: 'cf-eira-xmas', dungeonSlug: 'cithrels-fall', variant: 'Eira', label: "Cithrel's Fall — Eira Alt (Lvl 9)", methodUrl: 'https://www.method.gg/fellowship/route-planner/cithrels-fall/qQdyWEyu7eX89TT7', sourceTag: 'Xmas Rotation', recommendedLevel: 9 },
 
-  // Empyrean Sands
-  { id: 'es-reg', dungeonSlug: 'empyrean-sands', variant: 'Regular', label: 'Empyrean Sands — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/EEOPsMakjrYBdDb0', sourceTag: 'Core Routes' },
-  { id: 'es-ghorn', dungeonSlug: 'empyrean-sands', variant: 'Ghorn', label: 'Empyrean Sands — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/tg46s1JLdYHQ3Tdz', sourceTag: 'Core Routes', recommendedLevel: 15 },
-  { id: 'es-emp', dungeonSlug: 'empyrean-sands', variant: 'Empowered', label: 'Empyrean Sands — Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/yUSjgfFFqauWaw8E', sourceTag: 'Core Routes' },
-  { id: 'es-eira', dungeonSlug: 'empyrean-sands', variant: 'Eira', label: 'Empyrean Sands — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/TALuZDOJxYRTy7qb', sourceTag: 'Xmas Rotation' },
-  { id: 'es-krumbug', dungeonSlug: 'empyrean-sands', variant: 'Krumbug', label: 'Empyrean Sands — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/QFF3u0FVWjVLN0FB', sourceTag: 'Xmas Rotation' },
+  // Empyrean Sands (Season 2)
+  { id: 'es-reg', dungeonSlug: 'empyrean-sands', variant: 'Regular', label: 'Empyrean Sands — S2 Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/EEOPsMakjrYBdDb0', sourceTag: 'Season 2' },
+  { id: 'es-ghorn', dungeonSlug: 'empyrean-sands', variant: 'Ghorn', label: 'Empyrean Sands — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/tg46s1JLdYHQ3Tdz', sourceTag: 'Season 2', recommendedLevel: 15 },
+  { id: 'es-eira', dungeonSlug: 'empyrean-sands', variant: 'Eira', label: 'Empyrean Sands — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/TALuZDOJxYRTy7qb', sourceTag: 'Season 2' },
+  { id: 'es-emp', dungeonSlug: 'empyrean-sands', variant: 'Empowered', label: 'Empyrean Sands — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/yUSjgfFFqauWaw8E', sourceTag: 'Season 2' },
+  { id: 'es-krumbug', dungeonSlug: 'empyrean-sands', variant: 'Krumbug', label: 'Empyrean Sands — Krumbug (S1 Archive)', methodUrl: 'https://www.method.gg/fellowship/route-planner/empyrean-sands/QFF3u0FVWjVLN0FB', sourceTag: 'Xmas Rotation' },
 
-  // Everdawn Grove
-  { id: 'eg-reg', dungeonSlug: 'everdawn-grove', variant: 'Regular', label: 'Everdawn Grove — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/vJzNJmTF9ki19v6Q', sourceTag: 'Core Routes' },
-  { id: 'eg-eira', dungeonSlug: 'everdawn-grove', variant: 'Eira', label: 'Everdawn Grove — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/MDrYLS355vMjKkYU', sourceTag: 'Core Routes' },
-  { id: 'eg-eira-xmas', dungeonSlug: 'everdawn-grove', variant: 'Eira', label: 'Everdawn Grove — Eira Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/5OiiDhxqgjm447LX', sourceTag: 'Xmas Rotation' },
-  { id: 'eg-krumbug', dungeonSlug: 'everdawn-grove', variant: 'Krumbug', label: 'Everdawn Grove — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/GeFqtIkn0KGSfm6M', sourceTag: 'Xmas Rotation', recommendedLevel: 16 },
+  // Everdawn Grove (Legacy S1)
+  { id: 'eg-reg', dungeonSlug: 'everdawn-grove', variant: 'Regular', label: 'Everdawn Grove — Standard Push (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/vJzNJmTF9ki19v6Q', sourceTag: 'Core Routes' },
+  { id: 'eg-eira', dungeonSlug: 'everdawn-grove', variant: 'Eira', label: 'Everdawn Grove — Eira (+90s Boon, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/MDrYLS355vMjKkYU', sourceTag: 'Core Routes' },
+  { id: 'eg-eira-xmas', dungeonSlug: 'everdawn-grove', variant: 'Eira', label: 'Everdawn Grove — Eira Speed (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/5OiiDhxqgjm447LX', sourceTag: 'Xmas Rotation' },
+  { id: 'eg-krumbug', dungeonSlug: 'everdawn-grove', variant: 'Krumbug', label: 'Everdawn Grove — Krumbug (+60s Bag, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/everdawn-grove/GeFqtIkn0KGSfm6M', sourceTag: 'Xmas Rotation', recommendedLevel: 16 },
 
-  // Godfall Quarry
-  { id: 'gq-reg', dungeonSlug: 'godfall-quarry', variant: 'Regular', label: 'Godfall Quarry — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/Y3De6MD1gs6LUfQ5', sourceTag: 'Core Routes' },
-  { id: 'gq-ghorn', dungeonSlug: 'godfall-quarry', variant: 'Ghorn', label: 'Godfall Quarry — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/yXVgkaBPBXZpv6S5', sourceTag: 'Core Routes' },
-  { id: 'gq-krumbug', dungeonSlug: 'godfall-quarry', variant: 'Krumbug', label: 'Godfall Quarry — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/VXnNTz8KAdfoP1QJ', sourceTag: 'Xmas Rotation' },
-  { id: 'gq-eira', dungeonSlug: 'godfall-quarry', variant: 'Eira', label: 'Godfall Quarry — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/UL1Py2fYPLuYVLAM', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
+  // Godfall Quarry (Season 2)
+  { id: 'gq-reg', dungeonSlug: 'godfall-quarry', variant: 'Regular', label: 'Godfall Quarry — S2 Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/Y3De6MD1gs6LUfQ5', sourceTag: 'Season 2' },
+  { id: 'gq-ghorn', dungeonSlug: 'godfall-quarry', variant: 'Ghorn', label: 'Godfall Quarry — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/yXVgkaBPBXZpv6S5', sourceTag: 'Season 2' },
+  { id: 'gq-eira', dungeonSlug: 'godfall-quarry', variant: 'Eira', label: 'Godfall Quarry — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/UL1Py2fYPLuYVLAM', sourceTag: 'Season 2', recommendedLevel: 14 },
+  { id: 'gq-emp', dungeonSlug: 'godfall-quarry', variant: 'Empowered', label: 'Godfall Quarry — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry', sourceTag: 'Season 2' },
+  { id: 'gq-krumbug', dungeonSlug: 'godfall-quarry', variant: 'Krumbug', label: 'Godfall Quarry — Krumbug (S1 Archive)', methodUrl: 'https://www.method.gg/fellowship/route-planner/godfall-quarry/VXnNTz8KAdfoP1QJ', sourceTag: 'Xmas Rotation' },
 
-  // The Heart of Tuzari
-  { id: 'hot-reg', dungeonSlug: 'the-heart-of-tuzari', variant: 'Regular', label: 'Heart of Tuzari — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/5weN8plJLwL0b18M', sourceTag: 'Core Routes' },
-  { id: 'hot-ghorn', dungeonSlug: 'the-heart-of-tuzari', variant: 'Ghorn', label: 'Heart of Tuzari — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/2VhDa0K260ox7iWG', sourceTag: 'Core Routes' },
-  { id: 'hot-eira', dungeonSlug: 'the-heart-of-tuzari', variant: 'Eira', label: 'Heart of Tuzari — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/wdazBWxDZfAElzoG', sourceTag: 'Core Routes' },
-  { id: 'hot-ghorn-xmas', dungeonSlug: 'the-heart-of-tuzari', variant: 'Ghorn', label: 'Heart of Tuzari — Ghorn Alt (Lvl 10)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/6azY0h7RoBC8xUbK', sourceTag: 'Xmas Rotation', recommendedLevel: 10 },
-  { id: 'hot-krumbug', dungeonSlug: 'the-heart-of-tuzari', variant: 'Krumbug', label: 'Heart of Tuzari — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/MSVsbFU94GBBGa4C', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
-  { id: 'hot-eira-xmas', dungeonSlug: 'the-heart-of-tuzari', variant: 'Eira', label: 'Heart of Tuzari — Eira Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/A7bmS4kv0IsJ3ySO', sourceTag: 'Xmas Rotation' },
+  // The Heart of Tuzari (Legacy S1)
+  { id: 'hot-reg', dungeonSlug: 'the-heart-of-tuzari', variant: 'Regular', label: 'Heart of Tuzari — Standard Push (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/5weN8plJLwL0b18M', sourceTag: 'Core Routes' },
+  { id: 'hot-ghorn', dungeonSlug: 'the-heart-of-tuzari', variant: 'Ghorn', label: 'Heart of Tuzari — Ghorn (+20s Boon, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/2VhDa0K260ox7iWG', sourceTag: 'Core Routes' },
+  { id: 'hot-eira', dungeonSlug: 'the-heart-of-tuzari', variant: 'Eira', label: 'Heart of Tuzari — Eira (+90s Boon, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/wdazBWxDZfAElzoG', sourceTag: 'Core Routes' },
+  { id: 'hot-ghorn-xmas', dungeonSlug: 'the-heart-of-tuzari', variant: 'Ghorn', label: 'Heart of Tuzari — Ghorn Alt (Lvl 10, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/6azY0h7RoBC8xUbK', sourceTag: 'Xmas Rotation', recommendedLevel: 10 },
+  { id: 'hot-krumbug', dungeonSlug: 'the-heart-of-tuzari', variant: 'Krumbug', label: 'Heart of Tuzari — Krumbug (+60s Bag, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/MSVsbFU94GBBGa4C', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
+  { id: 'hot-eira-xmas', dungeonSlug: 'the-heart-of-tuzari', variant: 'Eira', label: 'Heart of Tuzari — Eira Speed (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/the-heart-of-tuzari/A7bmS4kv0IsJ3ySO', sourceTag: 'Xmas Rotation' },
 
-  // Ransack of Drakheim
-  { id: 'rod-reg', dungeonSlug: 'ransack-of-drakheim', variant: 'Regular', label: 'Ransack of Drakheim — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/IoClnf0L2l1XklVd', sourceTag: 'Core Routes' },
-  { id: 'rod-ghorn', dungeonSlug: 'ransack-of-drakheim', variant: 'Ghorn', label: 'Ransack of Drakheim — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RtcCdsCwNIlcSckl', sourceTag: 'Core Routes', recommendedLevel: 16 },
-  { id: 'rod-eira', dungeonSlug: 'ransack-of-drakheim', variant: 'Eira', label: 'Ransack of Drakheim — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/dEhek8djBZh3wEAX', sourceTag: 'Core Routes' },
-  { id: 'rod-krumbug', dungeonSlug: 'ransack-of-drakheim', variant: 'Krumbug', label: 'Ransack of Drakheim — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RnkM9APwOjqPHQIP', sourceTag: 'Xmas Rotation', recommendedLevel: 20 },
-  { id: 'rod-eira-xmas', dungeonSlug: 'ransack-of-drakheim', variant: 'Eira', label: 'Ransack of Drakheim — Eira Alt (Lvl 12)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/4mj0R1QSyUNYdKnF', sourceTag: 'Xmas Rotation', recommendedLevel: 12 },
-  { id: 'rod-ghorn-xmas', dungeonSlug: 'ransack-of-drakheim', variant: 'Ghorn', label: 'Ransack of Drakheim — Ghorn Low-Key', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/aUsjTNfh0eumMVuk', sourceTag: 'Xmas Rotation' },
+  // Ransack of Drakheim (Legacy S1)
+  { id: 'rod-reg', dungeonSlug: 'ransack-of-drakheim', variant: 'Regular', label: 'Ransack of Drakheim — Standard Push (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/IoClnf0L2l1XklVd', sourceTag: 'Core Routes' },
+  { id: 'rod-ghorn', dungeonSlug: 'ransack-of-drakheim', variant: 'Ghorn', label: 'Ransack of Drakheim — Ghorn (+20s Boon, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RtcCdsCwNIlcSckl', sourceTag: 'Core Routes', recommendedLevel: 16 },
+  { id: 'rod-eira', dungeonSlug: 'ransack-of-drakheim', variant: 'Eira', label: 'Ransack of Drakheim — Eira (+90s Boon, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/dEhek8djBZh3wEAX', sourceTag: 'Core Routes' },
+  { id: 'rod-krumbug', dungeonSlug: 'ransack-of-drakheim', variant: 'Krumbug', label: 'Ransack of Drakheim — Krumbug (+60s Bag, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/RnkM9APwOjqPHQIP', sourceTag: 'Xmas Rotation', recommendedLevel: 20 },
+  { id: 'rod-eira-xmas', dungeonSlug: 'ransack-of-drakheim', variant: 'Eira', label: 'Ransack of Drakheim — Eira Alt (Lvl 12, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/4mj0R1QSyUNYdKnF', sourceTag: 'Xmas Rotation', recommendedLevel: 12 },
+  { id: 'rod-ghorn-xmas', dungeonSlug: 'ransack-of-drakheim', variant: 'Ghorn', label: 'Ransack of Drakheim — Ghorn Low-Key (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ransack-of-drakheim/aUsjTNfh0eumMVuk', sourceTag: 'Xmas Rotation' },
 
-  // Sailor's Abyss
-  { id: 'sa-reg', dungeonSlug: 'sailors-abyss', variant: 'Regular', label: "Sailor's Abyss — Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/WiddqcdUNXfzCsCQ', sourceTag: 'Core Routes' },
-  { id: 'sa-eira', dungeonSlug: 'sailors-abyss', variant: 'Eira', label: "Sailor's Abyss — Eira (+90s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/3rUilILRl1M5QUv7', sourceTag: 'Core Routes' },
-  { id: 'sa-ghorn', dungeonSlug: 'sailors-abyss', variant: 'Ghorn', label: "Sailor's Abyss — Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/jqE7MJ7Wm1Yu5S6a', sourceTag: 'Xmas Rotation' },
-  { id: 'sa-eira-xmas', dungeonSlug: 'sailors-abyss', variant: 'Eira', label: "Sailor's Abyss — Eira Speed", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/6z94bSzGRVmHYvlv', sourceTag: 'Xmas Rotation' },
-  { id: 'sa-krumbug', dungeonSlug: 'sailors-abyss', variant: 'Krumbug', label: "Sailor's Abyss — Krumbug (+60s Bag)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/qwuvGAQB5QbCPVzF', sourceTag: 'Xmas Rotation', recommendedLevel: 15 },
+  // Sailor's Abyss (Legacy S1)
+  { id: 'sa-reg', dungeonSlug: 'sailors-abyss', variant: 'Regular', label: "Sailor's Abyss — Standard Push (S1)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/WiddqcdUNXfzCsCQ', sourceTag: 'Core Routes' },
+  { id: 'sa-eira', dungeonSlug: 'sailors-abyss', variant: 'Eira', label: "Sailor's Abyss — Eira (+90s Boon, S1)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/3rUilILRl1M5QUv7', sourceTag: 'Core Routes' },
+  { id: 'sa-ghorn', dungeonSlug: 'sailors-abyss', variant: 'Ghorn', label: "Sailor's Abyss — Ghorn (+20s Boon, S1)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/jqE7MJ7Wm1Yu5S6a', sourceTag: 'Xmas Rotation' },
+  { id: 'sa-eira-xmas', dungeonSlug: 'sailors-abyss', variant: 'Eira', label: "Sailor's Abyss — Eira Speed (S1)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/6z94bSzGRVmHYvlv', sourceTag: 'Xmas Rotation' },
+  { id: 'sa-krumbug', dungeonSlug: 'sailors-abyss', variant: 'Krumbug', label: "Sailor's Abyss — Krumbug (+60s Bag, S1)", methodUrl: 'https://www.method.gg/fellowship/route-planner/sailors-abyss/qwuvGAQB5QbCPVzF', sourceTag: 'Xmas Rotation', recommendedLevel: 15 },
 
-  // Silken Hollow
-  { id: 'sh-reg', dungeonSlug: 'silken-hollow', variant: 'Regular', label: 'Silken Hollow — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/a4jm2OOJucRCK7vk', sourceTag: 'Core Routes' },
-  { id: 'sh-eira', dungeonSlug: 'silken-hollow', variant: 'Eira', label: 'Silken Hollow — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/M7FD4leYIvJ2RHo7', sourceTag: 'Core Routes' },
-  { id: 'sh-krumbug', dungeonSlug: 'silken-hollow', variant: 'Krumbug', label: 'Silken Hollow — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/5tukMKJLSMjyWJGo', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
+  // Silken Hollow (Season 2)
+  { id: 'sh-reg', dungeonSlug: 'silken-hollow', variant: 'Regular', label: 'Silken Hollow — S2 Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/a4jm2OOJucRCK7vk', sourceTag: 'Season 2' },
+  { id: 'sh-ghorn', dungeonSlug: 'silken-hollow', variant: 'Ghorn', label: 'Silken Hollow — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow', sourceTag: 'Season 2' },
+  { id: 'sh-eira', dungeonSlug: 'silken-hollow', variant: 'Eira', label: 'Silken Hollow — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/M7FD4leYIvJ2RHo7', sourceTag: 'Season 2' },
+  { id: 'sh-emp', dungeonSlug: 'silken-hollow', variant: 'Empowered', label: 'Silken Hollow — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow', sourceTag: 'Season 2' },
+  { id: 'sh-krumbug', dungeonSlug: 'silken-hollow', variant: 'Krumbug', label: 'Silken Hollow — Krumbug (S1 Archive)', methodUrl: 'https://www.method.gg/fellowship/route-planner/silken-hollow/5tukMKJLSMjyWJGo', sourceTag: 'Xmas Rotation', recommendedLevel: 14 },
 
-  // Stormwatch
-  { id: 'sw-reg', dungeonSlug: 'stormwatch', variant: 'Regular', label: 'Stormwatch — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/YIWHe5JCMtWaSRnB', sourceTag: 'Core Routes' },
-  { id: 'sw-eira', dungeonSlug: 'stormwatch', variant: 'Eira', label: 'Stormwatch — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/yEwFYdfADLa8tVER', sourceTag: 'Core Routes', recommendedLevel: 16, notes: 'Sheet note: Consider trading for lvl 14 with Ghorn' },
-  { id: 'sw-ghorn', dungeonSlug: 'stormwatch', variant: 'Ghorn', label: 'Stormwatch — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/7gL4KCbHnPyJg1VU', sourceTag: 'Xmas Rotation', recommendedLevel: 22 },
-  { id: 'sw-krumbug', dungeonSlug: 'stormwatch', variant: 'Krumbug', label: 'Stormwatch — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/UpRhNPgl2WVJE5j8', sourceTag: 'Xmas Rotation' },
+  // Stormwatch (Season 2)
+  { id: 'sw-reg', dungeonSlug: 'stormwatch', variant: 'Regular', label: 'Stormwatch — S2 Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/YIWHe5JCMtWaSRnB', sourceTag: 'Season 2' },
+  { id: 'sw-ghorn', dungeonSlug: 'stormwatch', variant: 'Ghorn', label: 'Stormwatch — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/7gL4KCbHnPyJg1VU', sourceTag: 'Season 2', recommendedLevel: 22 },
+  { id: 'sw-eira', dungeonSlug: 'stormwatch', variant: 'Eira', label: 'Stormwatch — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/yEwFYdfADLa8tVER', sourceTag: 'Season 2', recommendedLevel: 16, notes: 'Sheet note: Consider trading for lvl 14 with Ghorn' },
+  { id: 'sw-emp', dungeonSlug: 'stormwatch', variant: 'Empowered', label: 'Stormwatch — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch', sourceTag: 'Season 2' },
+  { id: 'sw-krumbug', dungeonSlug: 'stormwatch', variant: 'Krumbug', label: 'Stormwatch — Krumbug (S1 Archive)', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/UpRhNPgl2WVJE5j8', sourceTag: 'Xmas Rotation' },
   { id: 'sw-eira-xmas', dungeonSlug: 'stormwatch', variant: 'Eira', label: 'Stormwatch — Eira Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/stormwatch/SBwMMWnw8KBM2Tmy', sourceTag: 'Xmas Rotation' },
 
-  // Urrak Markets
-  { id: 'um-reg', dungeonSlug: 'urrak-markets', variant: 'Regular', label: 'Urrak Markets — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/GEEmZZzwmHwU90yN', sourceTag: 'Core Routes' },
-  { id: 'um-ghorn', dungeonSlug: 'urrak-markets', variant: 'Ghorn', label: 'Urrak Markets — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/Br1xQLCeMACEzVIp', sourceTag: 'Core Routes' },
-  { id: 'um-krumbug', dungeonSlug: 'urrak-markets', variant: 'Krumbug', label: 'Urrak Markets — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/rN5hoCaGt8phd8Q2', sourceTag: 'Xmas Rotation' },
+  // Urrak Markets (Season 2)
+  { id: 'um-reg', dungeonSlug: 'urrak-markets', variant: 'Regular', label: 'Urrak Markets — S2 Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/GEEmZZzwmHwU90yN', sourceTag: 'Season 2' },
+  { id: 'um-ghorn', dungeonSlug: 'urrak-markets', variant: 'Ghorn', label: 'Urrak Markets — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/Br1xQLCeMACEzVIp', sourceTag: 'Season 2' },
+  { id: 'um-eira', dungeonSlug: 'urrak-markets', variant: 'Eira', label: 'Urrak Markets — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/FndKJ21frabeHTZu', sourceTag: 'Season 2', recommendedLevel: 15, notes: 'Sheet note: Consider trading for lvl 14 with Ghorn' },
+  { id: 'um-emp', dungeonSlug: 'urrak-markets', variant: 'Empowered', label: 'Urrak Markets — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets', sourceTag: 'Season 2' },
+  { id: 'um-krumbug', dungeonSlug: 'urrak-markets', variant: 'Krumbug', label: 'Urrak Markets — Krumbug (S1 Archive)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/rN5hoCaGt8phd8Q2', sourceTag: 'Xmas Rotation' },
   { id: 'um-ghorn-xmas', dungeonSlug: 'urrak-markets', variant: 'Ghorn', label: 'Urrak Markets — Ghorn Speed', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/IJlk3VZDOhSro3ZX', sourceTag: 'Xmas Rotation' },
-  { id: 'um-eira', dungeonSlug: 'urrak-markets', variant: 'Eira', label: 'Urrak Markets — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/urrak-markets/FndKJ21frabeHTZu', sourceTag: 'Xmas Rotation', recommendedLevel: 15, notes: 'Sheet note: Consider trading for lvl 14 with Ghorn' },
 
-  // Wraithtide Vault
-  { id: 'wv-reg', dungeonSlug: 'wraithtide-vault', variant: 'Regular', label: 'Wraithtide Vault — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/oJPC09srg3rpOafB', sourceTag: 'Core Routes' },
-  { id: 'wv-ghorn', dungeonSlug: 'wraithtide-vault', variant: 'Ghorn', label: 'Wraithtide Vault — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/tcof25h1yZ1vBz99', sourceTag: 'Core Routes' },
-  { id: 'wv-eira', dungeonSlug: 'wraithtide-vault', variant: 'Eira', label: 'Wraithtide Vault — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/fFVpmYWqhmNmXb3M', sourceTag: 'Core Routes', recommendedLevel: 15 },
+  // Wraithtide Vault (Season 2)
+  { id: 'wv-reg', dungeonSlug: 'wraithtide-vault', variant: 'Regular', label: 'Wraithtide Vault — S2 Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/oJPC09srg3rpOafB', sourceTag: 'Season 2' },
+  { id: 'wv-ghorn', dungeonSlug: 'wraithtide-vault', variant: 'Ghorn', label: 'Wraithtide Vault — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/tcof25h1yZ1vBz99', sourceTag: 'Season 2' },
+  { id: 'wv-eira', dungeonSlug: 'wraithtide-vault', variant: 'Eira', label: 'Wraithtide Vault — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/fFVpmYWqhmNmXb3M', sourceTag: 'Season 2', recommendedLevel: 15 },
+  { id: 'wv-emp', dungeonSlug: 'wraithtide-vault', variant: 'Empowered', label: 'Wraithtide Vault — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault', sourceTag: 'Season 2' },
   { id: 'wv-ghorn-xmas', dungeonSlug: 'wraithtide-vault', variant: 'Ghorn', label: 'Wraithtide Vault — Ghorn High-Key (Lvl 19)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/bXTELXzjCBo62YUQ', sourceTag: 'Xmas Rotation', recommendedLevel: 19 },
-  { id: 'wv-krumbug', dungeonSlug: 'wraithtide-vault', variant: 'Krumbug', label: 'Wraithtide Vault — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/FKSlEDgeATJE32bN', sourceTag: 'Xmas Rotation', recommendedLevel: 11 },
+  { id: 'wv-krumbug', dungeonSlug: 'wraithtide-vault', variant: 'Krumbug', label: 'Wraithtide Vault — Krumbug (S1 Archive)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wraithtide-vault/FKSlEDgeATJE32bN', sourceTag: 'Xmas Rotation', recommendedLevel: 11 },
 
-  // Wyrmheart
-  { id: 'wh-reg', dungeonSlug: 'wyrmheart', variant: 'Regular', label: 'Wyrmheart — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/x8w1h2wE7gso2Aez', sourceTag: 'Core Routes' },
-  { id: 'wh-ghorn', dungeonSlug: 'wyrmheart', variant: 'Ghorn', label: 'Wyrmheart — Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/aOKmkuC2d6n5eCLu', sourceTag: 'Core Routes', recommendedLevel: 16 },
-  { id: 'wh-krumbug', dungeonSlug: 'wyrmheart', variant: 'Krumbug', label: 'Wyrmheart — Krumbug (+60s Bag)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/R7aDCNMydRMMT91T', sourceTag: 'Xmas Rotation' },
+  // Wyrmheart (Legacy S1)
+  { id: 'wh-reg', dungeonSlug: 'wyrmheart', variant: 'Regular', label: 'Wyrmheart — Standard Push (S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/x8w1h2wE7gso2Aez', sourceTag: 'Core Routes' },
+  { id: 'wh-ghorn', dungeonSlug: 'wyrmheart', variant: 'Ghorn', label: 'Wyrmheart — Ghorn (+20s Boon, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/aOKmkuC2d6n5eCLu', sourceTag: 'Core Routes', recommendedLevel: 16 },
+  { id: 'wh-krumbug', dungeonSlug: 'wyrmheart', variant: 'Krumbug', label: 'Wyrmheart — Krumbug (+60s Bag, S1)', methodUrl: 'https://www.method.gg/fellowship/route-planner/wyrmheart/R7aDCNMydRMMT91T', sourceTag: 'Xmas Rotation' },
 
-  // Scryer's Peak
-  { id: 'sp-reg', dungeonSlug: 'scryers-peak', variant: 'Regular', label: "Scryer's Peak — Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak/tr7XNnh0RzYouTrC', sourceTag: 'Core Routes' },
-  { id: 'sp-ghorn', dungeonSlug: 'scryers-peak', variant: 'Ghorn', label: "Scryer's Peak — Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak/KhNsmJMtTYRn8CC1', sourceTag: 'Core Routes' },
+  // Scryer's Peak (Season 2)
+  { id: 'sp-reg', dungeonSlug: 'scryers-peak', variant: 'Regular', label: "Scryer's Peak — S2 Standard Push", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak/tr7XNnh0RzYouTrC', sourceTag: 'Season 2' },
+  { id: 'sp-ghorn', dungeonSlug: 'scryers-peak', variant: 'Ghorn', label: "Scryer's Peak — S2 Ghorn (+20s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak/KhNsmJMtTYRn8CC1', sourceTag: 'Season 2' },
+  { id: 'sp-eira', dungeonSlug: 'scryers-peak', variant: 'Eira', label: "Scryer's Peak — S2 Eira / Witch (+90s Boon)", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak', sourceTag: 'Season 2' },
+  { id: 'sp-emp', dungeonSlug: 'scryers-peak', variant: 'Empowered', label: "Scryer's Peak — S2 Empowered Minions", methodUrl: 'https://www.method.gg/fellowship/route-planner/scryers-peak', sourceTag: 'Season 2' },
 
-  // Ruins of Regath
-  { id: 'ror-reg', dungeonSlug: 'ruins-of-regath', variant: 'Regular', label: 'Ruins of Regath — Standard Push', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/FmCCba517PhJwCAr', sourceTag: 'Core Routes' },
-  { id: 'ror-eira', dungeonSlug: 'ruins-of-regath', variant: 'Eira', label: 'Ruins of Regath — Eira (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/HBQgaQFlPvulMLRm', sourceTag: 'Core Routes' },
+  // Ruins of Regath (Season 2 — 3 Blood Towers = 60 Blood)
+  { id: 'ror-reg', dungeonSlug: 'ruins-of-regath', variant: 'Regular', label: 'Ruins of Regath — S2 Standard Push (60+ Blood)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/FmCCba517PhJwCAr', sourceTag: 'Season 2' },
+  { id: 'ror-ghorn', dungeonSlug: 'ruins-of-regath', variant: 'Ghorn', label: 'Ruins of Regath — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath', sourceTag: 'Season 2' },
+  { id: 'ror-eira', dungeonSlug: 'ruins-of-regath', variant: 'Eira', label: 'Ruins of Regath — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath/HBQgaQFlPvulMLRm', sourceTag: 'Season 2' },
+  { id: 'ror-emp', dungeonSlug: 'ruins-of-regath', variant: 'Empowered', label: 'Ruins of Regath — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner/ruins-of-regath', sourceTag: 'Season 2' },
 
-  // Xul, The Blood Monolith
-  { id: 'xul-reg', dungeonSlug: 'xul-the-blood-monolith', variant: 'Regular', label: 'Xul, The Blood Monolith — Pinnacle Route', methodUrl: 'https://www.method.gg/fellowship/route-planner/xul-the-blood-monolith', sourceTag: 'Core Routes' },
-] as const;
+  // Xul, The Blood Monolith (Season 2 Pinnacle)
+  { id: 'xul-reg', dungeonSlug: 'xul-the-blood-monolith', variant: 'Regular', label: 'Xul, The Blood Monolith — S2 Pinnacle Route', methodUrl: 'https://www.method.gg/fellowship/route-planner/xul-the-blood-monolith', sourceTag: 'Season 2' },
+
+  // Crown of the Wild (New Season 2 Adventure)
+  { id: 'cotw-reg', dungeonSlug: 'crown-of-the-wild', variant: 'Regular', label: 'Crown of the Wild — S2 Fellowship Logs Clear', methodUrl: 'https://www.method.gg/fellowship/route-planner', sourceTag: 'Season 2' },
+  { id: 'cotw-ghorn', dungeonSlug: 'crown-of-the-wild', variant: 'Ghorn', label: 'Crown of the Wild — S2 Ghorn (+20s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner', sourceTag: 'Season 2' },
+  { id: 'cotw-eira', dungeonSlug: 'crown-of-the-wild', variant: 'Eira', label: 'Crown of the Wild — S2 Eira / Witch (+90s Boon)', methodUrl: 'https://www.method.gg/fellowship/route-planner', sourceTag: 'Season 2' },
+  { id: 'cotw-emp', dungeonSlug: 'crown-of-the-wild', variant: 'Empowered', label: 'Crown of the Wild — S2 Empowered Minions', methodUrl: 'https://www.method.gg/fellowship/route-planner', sourceTag: 'Season 2' },
+]);
 
 /**
  * Group members, characters, and BIS gear sets seeded from Fellowship Dungeon Sheets
@@ -640,14 +725,17 @@ export function createIdleLiveRunState(): LiveRunState {
 }
 
 export function createDefaultPartyState(roomId = 'stronghold'): PartySyncState {
+  const defaultS2 = SEASON_2_ROUTES.stormwatch?.Regular;
   return {
     roomId,
     revision: 1,
     leadMemberId: 'nick',
     autoFollowLogLead: true,
-    activeDungeonSlug: 'ransack-of-drakheim',
-    activeVariant: 'Krumbug',
-    activeRouteId: 'rod-krumbug',
+    activeDungeonSlug: 'stormwatch',
+    activeVariant: 'Regular',
+    activeRouteId: 'sw-reg',
+    activeRouteR5: defaultS2?.r5Code ?? null,
+    activeRoutePulls: defaultS2 ? structuredClone(defaultS2.pulls) : null,
     activePullIndex: 1,
     plannedEternalLevel: 16,
     pings: [],

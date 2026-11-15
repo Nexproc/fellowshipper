@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { AFFIX_CATALOG, DUNGEONS } from '../domain/catalog';
 import {
   computeEternalTargetScore,
+  extractR5CodeFromInput,
   formatDurationSeconds,
   predictEmissaryVariant,
 } from '../domain/punchList';
@@ -19,15 +20,18 @@ import type {
   DungeonDefinition,
   LiveRunState,
   MapPing,
+  PullNode,
   RoutePlan,
 } from '../domain/types';
 import type { LogWatcherController } from '../services/combatLogWatcher';
-import { MethodRouteEmbed } from './MethodRouteEmbed';
+import { MethodRouteEmbed, type PlannerSyncPayload } from './MethodRouteEmbed';
 
 interface RoutePlannerViewProps {
   activeDungeon: DungeonDefinition;
   availableRoutes: readonly RoutePlan[];
   activeRoute: RoutePlan | null;
+  activeRouteR5?: string | null;
+  activeRoutePulls?: readonly PullNode[] | null;
   activeVariant: BossVariant;
   activePullIndex: number;
   plannedEternalLevel: number;
@@ -42,10 +46,24 @@ interface RoutePlannerViewProps {
   onToggleAutoFollow: () => void;
   onSelectPull: (index: number) => void;
   onPingMap: (x: number, y: number, label: string) => void;
+  onPlannerStateChange?: (payload: PlannerSyncPayload) => void;
+  onSaveEditedRoute?: (payload: {
+    label: string;
+    r5Code: string;
+    pulls: PullNode[];
+    shareUrl: string;
+  }) => void;
   onAddCustomRoute: (route: Omit<RoutePlan, 'id' | 'sourceTag'>) => void;
 }
 
-const VARIANTS: readonly BossVariant[] = [
+const SEASON_2_VARIANTS: readonly BossVariant[] = [
+  'Regular',
+  'Ghorn',
+  'Eira',
+  'Empowered',
+];
+
+const LEGACY_VARIANTS: readonly BossVariant[] = [
   'Regular',
   'Ghorn',
   'Krumbug',
@@ -57,6 +75,8 @@ export function RoutePlannerView({
   activeDungeon,
   availableRoutes,
   activeRoute,
+  activeRouteR5,
+  activeRoutePulls,
   activeVariant,
   activePullIndex,
   plannedEternalLevel,
@@ -71,6 +91,8 @@ export function RoutePlannerView({
   onToggleAutoFollow,
   onSelectPull,
   onPingMap,
+  onPlannerStateChange,
+  onSaveEditedRoute,
   onAddCustomRoute,
 }: RoutePlannerViewProps) {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -78,8 +100,20 @@ export function RoutePlannerView({
   const [newUrl, setNewUrl] = useState('');
   const [newVariant, setNewVariant] = useState<BossVariant>('Ghorn');
   const [newNotes, setNewNotes] = useState('');
+  const [focusRequestTick, setFocusRequestTick] = useState(0);
 
-  const pulls = activeRoute?.pulls ?? activeDungeon.defaultPulls;
+  const pulls =
+    (activeRoutePulls && activeRoutePulls.length > 0
+      ? activeRoutePulls
+      : activeRoute?.pulls) ?? activeDungeon.defaultPulls;
+
+  const season2Dungeons = DUNGEONS.filter((d) => d.seasonStatus === 'season-2');
+  const legacyDungeons = DUNGEONS.filter((d) => d.seasonStatus === 'legacy-s1');
+  const variants =
+    activeDungeon.seasonStatus === 'season-2'
+      ? SEASON_2_VARIANTS
+      : LEGACY_VARIANTS;
+
   const predictedEmissary = predictEmissaryVariant(activeDungeon, plannedEternalLevel);
   const targetScore = computeEternalTargetScore(plannedEternalLevel);
   const killPct = Math.min(
@@ -88,13 +122,20 @@ export function RoutePlannerView({
   );
   const playerUnits = Object.values(liveRun.units).filter((u) => u.isPlayer);
 
+  const handleStepPull = (nextIndex: number) => {
+    onSelectPull(nextIndex);
+    setFocusRequestTick((t) => t + 1);
+  };
+
   const handleSaveCustom = () => {
     if (!newLabel.trim() || !newUrl.trim()) return;
+    const parsedR5 = extractR5CodeFromInput(newUrl);
     onAddCustomRoute({
       dungeonSlug: activeDungeon.slug,
       variant: newVariant,
       label: newLabel.trim(),
       methodUrl: newUrl.trim(),
+      r5Code: parsedR5,
       notes: newNotes.trim() || undefined,
     });
     setNewLabel('');
@@ -102,6 +143,12 @@ export function RoutePlannerView({
     setNewNotes('');
     setShowAddForm(false);
   };
+
+  const totalRouteScore = pulls.reduce((s, p) => s + (p.killScore || 0), 0);
+  const totalRoutePct =
+    activeDungeon.killScoreTarget > 0
+      ? (totalRouteScore / activeDungeon.killScoreTarget) * 100
+      : 0;
 
   return (
     <div className="routes-grid">
@@ -116,15 +163,24 @@ export function RoutePlannerView({
               value={activeDungeon.slug}
               onChange={(e) => onSelectDungeon(e.target.value)}
             >
-              {DUNGEONS.map((d) => (
-                <option key={d.slug} value={d.slug}>
-                  {d.name} ({d.category})
-                </option>
-              ))}
+              <optgroup label={`Season 2 Active Pool (${season2Dungeons.length})`}>
+                {season2Dungeons.map((d) => (
+                  <option key={d.slug} value={d.slug}>
+                    {d.name} ({d.category})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={`Rotated Out — Legacy S1 (${legacyDungeons.length})`}>
+                {legacyDungeons.map((d) => (
+                  <option key={d.slug} value={d.slug}>
+                    [S1] {d.name} ({d.category})
+                  </option>
+                ))}
+              </optgroup>
             </select>
 
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {VARIANTS.map((v) => (
+              {variants.map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -132,13 +188,15 @@ export function RoutePlannerView({
                   className={`btn btn-sm ${activeVariant === v ? 'btn-primary' : ''}`}
                   onClick={() => onSelectVariant(v)}
                 >
-                  {v}
+                  {v === 'Eira' && activeDungeon.seasonStatus === 'season-2'
+                    ? 'Eira / Witch'
+                    : v}
                 </button>
               ))}
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
               <span>Eternal Lvl</span>
               <input
@@ -154,8 +212,8 @@ export function RoutePlannerView({
                 }
               />
             </label>
-            <span className="variant-chip" title="Predicted Emissary from Sheet4 rotation">
-              Rotates: {predictedEmissary} · {targetScore} pts
+            <span className="variant-chip" title="Target Eternal score">
+              {targetScore} pts
             </span>
           </div>
         </div>
@@ -175,13 +233,13 @@ export function RoutePlannerView({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 }}>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Saved Routes ({availableRoutes.length}):
+              Routes ({availableRoutes.length}):
             </span>
             <select
               id="select-saved-route"
               aria-label="Select Saved Route"
               className="select-control"
-              style={{ minWidth: 270 }}
+              style={{ minWidth: 250, maxWidth: '100%' }}
               value={activeRoute?.id ?? ''}
               onChange={(e) => onSelectRouteId(e.target.value)}
             >
@@ -192,16 +250,17 @@ export function RoutePlannerView({
               ))}
             </select>
 
-            {activeRoute?.methodUrl && (
-              <a
-                href={activeRoute.methodUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-sm"
-              >
-                Open in Method Planner <ExternalLink size={13} />
-              </a>
-            )}
+            {activeRoute?.methodUrl &&
+              activeDungeon.seasonStatus === 'legacy-s1' && (
+                <a
+                  href={activeRoute.methodUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-sm"
+                >
+                  Open S1 Method Link <ExternalLink size={13} />
+                </a>
+              )}
           </div>
 
           <button
@@ -210,7 +269,7 @@ export function RoutePlannerView({
             className="btn btn-sm"
             onClick={() => setShowAddForm((v) => !v)}
           >
-            <Plus size={13} /> Add Route Link
+            <Plus size={13} /> Import #r5 / Link
           </button>
         </div>
 
@@ -233,19 +292,19 @@ export function RoutePlannerView({
               <input
                 className="text-input"
                 style={{ width: '100%' }}
-                placeholder="e.g. Drakheim S3 Skip Pull"
+                placeholder="e.g. Stormwatch S2 Portal Skip"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
               />
             </div>
             <div>
               <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
-                Method / FellowRoutes URL
+                Season 2 #r5= Link / R5. Code / URL
               </div>
               <input
                 className="text-input"
                 style={{ width: '100%' }}
-                placeholder="https://www.method.gg/fellowship/route-planner/..."
+                placeholder="R5.APYJ... or https://...#r5=..."
                 value={newUrl}
                 onChange={(e) => setNewUrl(e.target.value)}
               />
@@ -260,7 +319,7 @@ export function RoutePlannerView({
                 value={newVariant}
                 onChange={(e) => setNewVariant(e.target.value as BossVariant)}
               >
-                {VARIANTS.map((v) => (
+                {variants.map((v) => (
                   <option key={v} value={v}>
                     {v}
                   </option>
@@ -269,7 +328,7 @@ export function RoutePlannerView({
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn btn-primary" onClick={handleSaveCustom}>
-                Save & Sync to Party
+                Save &amp; Sync to Party
               </button>
               <button type="button" className="btn" onClick={() => setShowAddForm(false)}>
                 Cancel
@@ -281,18 +340,33 @@ export function RoutePlannerView({
         <MethodRouteEmbed
           dungeon={activeDungeon}
           activeRoute={activeRoute}
+          activeRouteR5={activeRouteR5}
           variant={activeVariant}
           pulls={pulls}
           activePullIndex={activePullIndex}
+          focusRequestTick={focusRequestTick}
           liveRun={liveRun}
           pings={pings}
           onSelectPull={onSelectPull}
           onPingMap={onPingMap}
+          onPlannerStateChange={onPlannerStateChange}
+          onSaveEditedRoute={onSaveEditedRoute}
         />
 
-        <div className="panel-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div
+          className="panel-body"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Click any pull marker to sync the callout for everyone, or click empty terrain to send a live party ping.
+            {activeDungeon.seasonStatus === 'season-2'
+              ? 'Click any enemy pack on the map to add/remove it from the active pull — edits sync live to your whole party.'
+              : `Predicted S1 Emissary at E${plannedEternalLevel}: ${predictedEmissary}.`}
             {activeRoute?.notes && (
               <strong style={{ marginLeft: 8, color: 'var(--gold-400)' }}>
                 Note: {activeRoute.notes}
@@ -305,7 +379,7 @@ export function RoutePlannerView({
               type="button"
               className="btn btn-sm"
               disabled={activePullIndex <= 1}
-              onClick={() => onSelectPull(Math.max(1, activePullIndex - 1))}
+              onClick={() => handleStepPull(Math.max(1, activePullIndex - 1))}
             >
               <ChevronLeft size={14} /> Prev Pull
             </button>
@@ -313,7 +387,9 @@ export function RoutePlannerView({
               type="button"
               className="btn btn-primary btn-sm"
               disabled={activePullIndex >= pulls.length}
-              onClick={() => onSelectPull(Math.min(pulls.length, activePullIndex + 1))}
+              onClick={() =>
+                handleStepPull(Math.min(pulls.length, activePullIndex + 1))
+              }
             >
               Next Pull <ChevronRight size={14} />
             </button>
@@ -328,34 +404,99 @@ export function RoutePlannerView({
             <div>
               <h2 className="panel-title">Synchronized Pull Plan</h2>
               <p className="panel-subtitle">
-                Timer {formatDurationSeconds(activeDungeon.targetSeconds)} · Kill Score{' '}
-                {activeDungeon.killScoreTarget}
+                Timer {formatDurationSeconds(activeDungeon.targetSeconds)} ·{' '}
+                {Math.round(totalRouteScore)}/{activeDungeon.killScoreTarget} KS (
+                {totalRoutePct.toFixed(1)}%)
               </p>
             </div>
           </div>
           <div className="panel-body">
             <div className="pull-list">
-              {pulls.map((p) => (
-                <button
-                  key={p.index}
-                  type="button"
-                  className={`pull-step ${p.index === activePullIndex ? 'is-selected' : ''}`}
-                  onClick={() => onSelectPull(p.index)}
-                >
-                  <span className={`pull-num kind-${p.kind}`}>{p.index}</span>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.84rem' }}>{p.label}</div>
-                    {p.notes && (
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                        {p.notes}
+              {pulls.map((p) => {
+                const detailLine =
+                  p.enemySummary && p.enemySummary.length > 0
+                    ? p.enemySummary.slice(0, 3).join(', ')
+                    : p.notes;
+                const scoreLabel =
+                  p.kind === 'boss' && p.killScore === 0
+                    ? 'BOSS'
+                    : p.killPercent !== undefined && p.killPercent > 0
+                      ? `${p.killPercent.toFixed(1)}%`
+                      : p.killScore > 0
+                        ? `+${p.killScore}`
+                        : 'BOSS';
+
+                return (
+                  <button
+                    key={p.index}
+                    type="button"
+                    className={`pull-step ${
+                      p.index === activePullIndex ? 'is-selected' : ''
+                    }`}
+                    onClick={() => handleStepPull(p.index)}
+                  >
+                    <span className={`pull-num kind-${p.kind}`}>{p.index}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, fontSize: '0.83rem' }}>
+                          {p.label}
+                        </span>
+                        {p.mobCount !== undefined && p.mobCount > 0 && (
+                          <span
+                            className="mono"
+                            style={{
+                              fontSize: '0.7rem',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            ({p.mobCount} {p.mobCount === 1 ? 'mob' : 'mobs'})
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <span className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    {p.killScore > 0 ? `+${p.killScore}` : 'BOSS'}
-                  </span>
-                </button>
-              ))}
+                      {p.packTags && p.packTags.length > 0 && (
+                        <div className="pack-tag-row">
+                          {p.packTags.slice(0, 6).map((tag) => (
+                            <span key={tag} className="pack-tag-chip mono">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {detailLine && (
+                        <div
+                          style={{
+                            fontSize: '0.73rem',
+                            color: 'var(--text-secondary)',
+                            marginTop: 2,
+                          }}
+                        >
+                          {detailLine}
+                        </div>
+                      )}
+                    </div>
+                    <span
+                      className="mono"
+                      style={{
+                        fontSize: '0.75rem',
+                        color:
+                          scoreLabel === 'BOSS'
+                            ? 'var(--ember-500)'
+                            : 'var(--gold-400)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {scoreLabel}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -409,7 +550,7 @@ export function RoutePlannerView({
             {playerUnits.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Party Positions & Spirit
+                  Party Positions &amp; Spirit
                 </div>
                 {playerUnits.map((u) => {
                   const hpPct = Math.round((u.hpCurrent / Math.max(1, u.hpMax)) * 100);
@@ -452,7 +593,7 @@ export function RoutePlannerView({
                     className="btn btn-sm"
                     onClick={watcher.startSampleSimulation}
                   >
-                    <Play size={13} /> Simulate Drakheim Run
+                    <Play size={13} /> Simulate Run
                   </button>
                 </>
               ) : (

@@ -90,6 +90,8 @@ export class PartyRoomHub {
     let activeDungeonSlug = room.activeDungeonSlug;
     let activeVariant = room.activeVariant;
     let activeRouteId = room.activeRouteId;
+    let activeRouteR5 = room.activeRouteR5 ?? null;
+    let activeRoutePulls = room.activeRoutePulls ?? null;
     let plannedEternalLevel = room.plannedEternalLevel;
 
     const allRoutes = [...room.customRoutes, ...BUILT_IN_ROUTES];
@@ -109,6 +111,11 @@ export class PartyRoomHub {
         const matched = selectBestRoute(allRoutes, activeDungeonSlug, activeVariant);
         if (matched) {
           activeRouteId = matched.id;
+          activeRouteR5 = matched.r5Code ?? null;
+          activeRoutePulls = matched.pulls ?? null;
+        } else {
+          activeRouteR5 = null;
+          activeRoutePulls = null;
         }
       }
     }
@@ -119,6 +126,8 @@ export class PartyRoomHub {
       activeDungeonSlug,
       activeVariant,
       activeRouteId,
+      activeRouteR5,
+      activeRoutePulls,
       plannedEternalLevel,
       liveRun,
     };

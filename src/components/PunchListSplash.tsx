@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   FolderSearch,
   MapPin,
@@ -18,15 +19,18 @@ import type {
   DungeonDefinition,
   LiveRunState,
   MapPing,
+  PullNode,
   RoutePlan,
 } from '../domain/types';
 import type { LogWatcherController } from '../services/combatLogWatcher';
-import { MethodRouteEmbed } from './MethodRouteEmbed';
+import { MethodRouteEmbed, type PlannerSyncPayload } from './MethodRouteEmbed';
 
 interface PunchListSplashProps {
   punch: PunchListSummary;
   activeDungeon: DungeonDefinition;
   activeRoute: RoutePlan | null;
+  activeRouteR5?: string | null;
+  activeRoutePulls?: readonly PullNode[] | null;
   activeVariant: BossVariant;
   activePullIndex: number;
   plannedEternalLevel: number;
@@ -42,6 +46,13 @@ interface PunchListSplashProps {
   ) => void;
   onSelectPull: (index: number) => void;
   onPingMap: (x: number, y: number, label: string) => void;
+  onPlannerStateChange?: (payload: PlannerSyncPayload) => void;
+  onSaveEditedRoute?: (payload: {
+    label: string;
+    r5Code: string;
+    pulls: PullNode[];
+    shareUrl: string;
+  }) => void;
   onOpenFullRoutes: () => void;
 }
 
@@ -49,6 +60,8 @@ export function PunchListSplash({
   punch,
   activeDungeon,
   activeRoute,
+  activeRouteR5,
+  activeRoutePulls,
   activeVariant,
   activePullIndex,
   plannedEternalLevel,
@@ -59,25 +72,48 @@ export function PunchListSplash({
   onToggleItemAcquired,
   onSelectPull,
   onPingMap,
+  onPlannerStateChange,
+  onSaveEditedRoute,
   onOpenFullRoutes,
 }: PunchListSplashProps) {
   const [expandedSlugs, setExpandedSlugs] = useState<Record<string, boolean>>(() => {
-    const first = punch.topPriorityDungeon?.dungeon.slug;
-    return first ? { [first]: true } : {};
+    const firstS2 = punch.rows.find(
+      (r) => r.dungeon.seasonStatus === 'season-2' && r.totalNeeded > 0
+    )?.dungeon.slug;
+    const fallback = punch.topPriorityDungeon?.dungeon.slug;
+    const key = firstS2 ?? fallback;
+    return key ? { [key]: true } : {};
   });
   const [showZeroDungeons, setShowZeroDungeons] = useState(false);
+  const [season2Only, setSeason2Only] = useState(false);
   const [showAnyDungeon, setShowAnyDungeon] = useState(false);
+  const [focusRequestTick, setFocusRequestTick] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const toggleExpand = (slug: string) => {
     setExpandedSlugs((prev) => ({ ...prev, [slug]: !prev[slug] }));
   };
 
-  const visibleRows = showZeroDungeons
-    ? punch.rows
-    : punch.rows.filter((r) => r.totalNeeded > 0 || r.totalAcquired > 0);
+  const visibleRows = punch.rows.filter((r) => {
+    if (season2Only && r.dungeon.seasonStatus !== 'season-2') return false;
+    if (!showZeroDungeons && r.totalNeeded === 0 && r.totalAcquired === 0) {
+      return false;
+    }
+    return true;
+  });
 
-  const pulls = activeRoute?.pulls ?? activeDungeon.defaultPulls;
+  const pulls =
+    (activeRoutePulls && activeRoutePulls.length > 0
+      ? activeRoutePulls
+      : activeRoute?.pulls) ?? activeDungeon.defaultPulls;
+
+  const currentPull =
+    pulls[Math.max(0, Math.min(pulls.length - 1, activePullIndex - 1))] ?? null;
+
+  const handleStepPull = (nextIdx: number) => {
+    onSelectPull(nextIdx);
+    setFocusRequestTick((t) => t + 1);
+  };
 
   return (
     <div className="splash-grid">
@@ -96,14 +132,23 @@ export function PunchListSplash({
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${season2Only ? 'btn-primary' : ''}`}
+              onClick={() => setSeason2Only((v) => !v)}
+            >
+              {season2Only ? 'S2 Pool Only' : 'Filter: S2 Pool'}
+            </button>
             <button
               type="button"
               id="btn-toggle-zero-dungeons"
               className="btn btn-sm"
               onClick={() => setShowZeroDungeons((v) => !v)}
             >
-              {showZeroDungeons ? 'Hide 0-Need Dungeons' : 'Show All 15 Dungeons'}
+              {showZeroDungeons
+                ? 'Hide 0-Need'
+                : `Show All ${punch.rows.length}`}
             </button>
           </div>
         </div>
@@ -115,12 +160,17 @@ export function PunchListSplash({
               row.dungeon,
               plannedEternalLevel
             );
+            const syncVariant: BossVariant =
+              row.dungeon.seasonStatus === 'season-2' &&
+              predictedBoss === 'Krumbug'
+                ? 'Regular'
+                : predictedBoss;
             const badgeClass =
               row.totalNeeded >= 3
                 ? 'is-high'
                 : row.totalNeeded >= 1
-                ? 'is-med'
-                : 'is-low';
+                  ? 'is-med'
+                  : 'is-low';
             const isSynced = activeDungeon.slug === row.dungeon.slug;
 
             return (
@@ -146,12 +196,21 @@ export function PunchListSplash({
                     <div className="dungeon-meta-title">
                       {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       <span>{row.dungeon.name}</span>
+                      <span
+                        className={`s2-pool-badge ${
+                          row.dungeon.seasonStatus === 'season-2'
+                            ? 'is-s2'
+                            : 'is-legacy'
+                        }`}
+                      >
+                        {row.dungeon.seasonStatus === 'season-2' ? 'S2' : 'S1'}
+                      </span>
                       {isSynced && <span className="lead-tag">SYNCED</span>}
                     </div>
                     <div className="dungeon-meta-sub mono">
                       {row.dungeon.category} · {row.dungeon.bosses.length} Boss · Timer{' '}
-                      {formatDurationSeconds(row.dungeon.targetSeconds)} · E
-                      {plannedEternalLevel} {predictedBoss}
+                      {formatDurationSeconds(row.dungeon.targetSeconds)} · KS{' '}
+                      {row.dungeon.killScoreTarget}
                     </div>
                   </div>
 
@@ -182,7 +241,7 @@ export function PunchListSplash({
                       id={`btn-sync-route-${row.dungeon.slug}`}
                       className={`btn btn-sm ${isSynced ? 'btn-live' : 'btn-primary'}`}
                       onClick={() =>
-                        onSyncDungeonRoute(row.dungeon.slug, predictedBoss)
+                        onSyncDungeonRoute(row.dungeon.slug, syncVariant)
                       }
                     >
                       <MapPin size={13} />
@@ -326,12 +385,12 @@ export function PunchListSplash({
         </div>
       </section>
 
-      {/* Right Column: Live Synchronized Map & Combat-Log Stream Deck */}
+      {/* Right Column: Live Synchronized Season 2 Map & Combat-Log Stream Deck */}
       <aside className="panel" aria-labelledby="live-deck-heading">
         <div className="panel-header">
           <div>
             <h2 id="live-deck-heading" className="panel-title">
-              Synced Party Route & Combat Stream
+              Synced Party Route &amp; Enemy Positions
             </h2>
             <p className="panel-subtitle">
               {activeRoute?.label ?? `${activeDungeon.name} (${activeVariant})`}
@@ -344,25 +403,88 @@ export function PunchListSplash({
             className="btn btn-sm"
             onClick={onOpenFullRoutes}
           >
-            Full Route Planner
+            All Pulls &amp; Variants
           </button>
         </div>
 
         <MethodRouteEmbed
           dungeon={activeDungeon}
           activeRoute={activeRoute}
+          activeRouteR5={activeRouteR5}
           variant={activeVariant}
           pulls={pulls}
           activePullIndex={activePullIndex}
+          focusRequestTick={focusRequestTick}
           liveRun={liveRun}
           pings={pings}
           compact
           onSelectPull={onSelectPull}
           onPingMap={onPingMap}
+          onPlannerStateChange={onPlannerStateChange}
+          onSaveEditedRoute={onSaveEditedRoute}
         />
 
-        <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Quick Mobile Pull Stepper Callout */}
+        {currentPull && (
+          <div className="splash-pull-callout">
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span className="mono" style={{ fontSize: '0.74rem', color: 'var(--gold-400)', fontWeight: 700 }}>
+                  PULL {currentPull.index}/{pulls.length}
+                </span>
+                <strong style={{ fontSize: '0.83rem' }}>{currentPull.label}</strong>
+                {currentPull.killPercent !== undefined && currentPull.killPercent > 0 && (
+                  <span className="mono" style={{ fontSize: '0.73rem', color: 'var(--jade-400)' }}>
+                    +{currentPull.killPercent.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              {currentPull.enemySummary && currentPull.enemySummary.length > 0 && (
+                <div
+                  style={{
+                    fontSize: '0.74rem',
+                    color: 'var(--text-secondary)',
+                    marginTop: 2,
+                  }}
+                >
+                  {currentPull.enemySummary.slice(0, 4).join(' · ')}
+                </div>
+              )}
+            </div>
 
+            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={activePullIndex <= 1}
+                onClick={() => handleStepPull(Math.max(1, activePullIndex - 1))}
+                aria-label="Previous pull"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={activePullIndex >= pulls.length}
+                onClick={() =>
+                  handleStepPull(Math.min(pulls.length, activePullIndex + 1))
+                }
+                aria-label="Next pull"
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* CombatLogs Auto-Watcher Controls */}
           <div
             style={{

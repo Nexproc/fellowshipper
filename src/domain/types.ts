@@ -42,6 +42,8 @@ export interface HeroDefinition {
   accentHsl: string;
 }
 
+export type SeasonPoolStatus = 'season-2' | 'legacy-s1';
+
 export interface PullNode {
   index: number;
   label: string;
@@ -49,6 +51,10 @@ export interface PullNode {
   x: number;
   y: number;
   killScore: number;
+  killPercent?: number;
+  mobCount?: number;
+  packTags?: string[];
+  enemySummary?: string[];
   kind: 'pack' | 'miniboss' | 'boss';
   notes?: string;
 }
@@ -65,6 +71,9 @@ export interface DungeonDefinition {
   slug: string;
   name: string;
   category: DungeonCategory;
+  seasonStatus: SeasonPoolStatus;
+  /** Game level identifier used by the embedded Season 2 planner (e.g. Level.ID.NightPatrol) */
+  levelId?: string | null;
   mapImageUrl: string;
   bosses: string[];
   killScoreTarget: number;
@@ -83,7 +92,9 @@ export interface RoutePlan {
   variant: BossVariant;
   label: string;
   methodUrl: string;
-  sourceTag: 'Core Routes' | 'Xmas Rotation' | 'Spider Mount' | 'Custom';
+  /** Compact Season 2 planner route code (R5....) with exact enemy placements */
+  r5Code?: string;
+  sourceTag: 'Season 2' | 'Core Routes' | 'Xmas Rotation' | 'Spider Mount' | 'Custom';
   recommendedLevel?: number;
   notes?: string;
   pulls?: PullNode[];
@@ -218,6 +229,10 @@ export interface PartySyncState {
   activeDungeonSlug: string;
   activeVariant: BossVariant;
   activeRouteId: string;
+  /** Live compact Season 2 route code synced across the party when any player edits packs on the map */
+  activeRouteR5?: string | null;
+  /** Live pull-by-pull enemy summary synced from the embedded Season 2 planner */
+  activeRoutePulls?: PullNode[] | null;
   activePullIndex: number;
   plannedEternalLevel: number;
   pings: MapPing[];

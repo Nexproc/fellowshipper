@@ -231,6 +231,11 @@ export function selectBestRoute(
   const candidates = allRoutes.filter((r) => r.dungeonSlug === dungeonSlug);
   if (candidates.length === 0) return null;
 
+  const exactSeason2 = candidates.find(
+    (r) => r.variant === preferredVariant && r.sourceTag === 'Season 2'
+  );
+  if (exactSeason2) return exactSeason2;
+
   const exact = candidates.find((r) => r.variant === preferredVariant);
   if (exact) return exact;
 
@@ -254,4 +259,20 @@ export function resolveMethodRouteUrl(
     return raw;
   }
   return `https://www.method.gg/fellowship/route-planner/${dungeon.slug}`;
+}
+
+export function extractR5CodeFromInput(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('R5.')) return trimmed;
+  const hashIdx = trimmed.indexOf('#r5=');
+  if (hashIdx >= 0) {
+    const body = decodeURIComponent(trimmed.slice(hashIdx + 4).trim());
+    if (body) return body.startsWith('R5.') ? body : `R5.${body}`;
+  }
+  if (trimmed.startsWith('r5=')) {
+    const body = decodeURIComponent(trimmed.slice(3).trim());
+    if (body) return body.startsWith('R5.') ? body : `R5.${body}`;
+  }
+  return undefined;
 }

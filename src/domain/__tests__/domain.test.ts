@@ -245,5 +245,46 @@ describe('GCP Firebase Account Ownership & Per-Character Permissions', () => {
       'https://www.method.gg/fellowship/route-planner/stormwatch'
     );
   });
+
+  it('provides validated Season 2 R5 routes, pack tags, enemy summaries, and >=100% kill score across all 11 active dungeons', async () => {
+    const { SEASON_2_ROUTES } = await import('../season2Routes');
+    const { extractR5CodeFromInput } = await import('../punchList');
+
+    const s2Dungeons = DUNGEONS.filter((d) => d.seasonStatus === 'season-2');
+    const legacyDungeons = DUNGEONS.filter((d) => d.seasonStatus === 'legacy-s1');
+
+    expect(s2Dungeons).toHaveLength(11);
+    expect(legacyDungeons).toHaveLength(5);
+
+    for (const dungeon of s2Dungeons) {
+      expect(dungeon.levelId).toBeTruthy();
+      const regular = SEASON_2_ROUTES[dungeon.slug]?.Regular;
+      expect(regular).toBeDefined();
+      expect(regular!.r5Code.startsWith('R5.')).toBe(true);
+      expect(regular!.totalPercent).toBeGreaterThanOrEqual(100);
+      expect(regular!.pulls.length).toBeGreaterThanOrEqual(5);
+      expect(
+        regular!.pulls.some((p) => (p.packTags?.length ?? 0) > 0)
+      ).toBe(true);
+      expect(
+        regular!.pulls.some((p) => (p.enemySummary?.length ?? 0) > 0)
+      ).toBe(true);
+    }
+
+    // Ruins of Regath requires 3 Blood Towers (20 blood each = 60 blood)
+    expect(SEASON_2_ROUTES['ruins-of-regath']?.Regular?.blood).toBeGreaterThanOrEqual(60);
+
+    // R5 code parser handles bare codes, hashes, and full share URLs
+    const sampleR5 = SEASON_2_ROUTES.stormwatch!.Regular!.r5Code;
+    const sampleHash = SEASON_2_ROUTES.stormwatch!.Regular!.shareHash;
+    expect(extractR5CodeFromInput(sampleR5)).toBe(sampleR5);
+    expect(extractR5CodeFromInput(sampleHash)).toBe(sampleR5);
+    expect(
+      extractR5CodeFromInput(
+        `https://www.nicktitcombe.com/fellowshipper/planner/index.html?dungeon=Level.ID.NightPatrol${sampleHash}`
+      )
+    ).toBe(sampleR5);
+  });
 });
+
 

@@ -25,6 +25,7 @@ import type {
   MemberProfile,
   OnlinePresence,
   PartySyncState,
+  PullNode,
   RoutePlan,
 } from '../domain/types';
 import { getFirebaseServices } from './firebaseClient';
@@ -40,6 +41,8 @@ interface SharedRoomDoc {
   activeDungeonSlug: string;
   activeVariant: BossVariant;
   activeRouteId: string;
+  activeRouteR5: string | null;
+  activeRoutePulls: PullNode[] | null;
   activePullIndex: number;
   plannedEternalLevel: number;
   customRoutes: RoutePlan[];
@@ -60,6 +63,8 @@ function extractSharedDoc(state: PartySyncState): SharedRoomDoc {
     activeDungeonSlug: state.activeDungeonSlug,
     activeVariant: state.activeVariant,
     activeRouteId: state.activeRouteId,
+    activeRouteR5: state.activeRouteR5 ?? null,
+    activeRoutePulls: state.activeRoutePulls ?? null,
     activePullIndex: state.activePullIndex,
     plannedEternalLevel: state.plannedEternalLevel,
     customRoutes: state.customRoutes,
@@ -69,18 +74,34 @@ function extractSharedDoc(state: PartySyncState): SharedRoomDoc {
 }
 
 function loadCachedState(roomId: string): PartySyncState {
+  const seed = createDefaultPartyState(roomId);
   try {
     const raw = localStorage.getItem(`fellowshipper:room:${roomId}`);
     if (raw) {
       const parsed = JSON.parse(raw) as PartySyncState;
       if (parsed && parsed.roomId && Array.isArray(parsed.members)) {
+        // Migrate pre-Season-2 default cache so returning mobile users open on Stormwatch S2
+        if (
+          parsed.activeRouteR5 === undefined &&
+          parsed.activeDungeonSlug === 'ransack-of-drakheim'
+        ) {
+          return {
+            ...parsed,
+            activeDungeonSlug: seed.activeDungeonSlug,
+            activeVariant: seed.activeVariant,
+            activeRouteId: seed.activeRouteId,
+            activeRouteR5: seed.activeRouteR5 ?? null,
+            activeRoutePulls: seed.activeRoutePulls ?? null,
+            activePullIndex: 1,
+          };
+        }
         return parsed;
       }
     }
   } catch {
     // Ignore storage read failure
   }
-  return createDefaultPartyState(roomId);
+  return seed;
 }
 
 function saveCachedState(state: PartySyncState): void {
@@ -198,6 +219,14 @@ export function usePartyRoom(
             activeDungeonSlug: data.activeDungeonSlug ?? prev.activeDungeonSlug,
             activeVariant: data.activeVariant ?? prev.activeVariant,
             activeRouteId: data.activeRouteId ?? prev.activeRouteId,
+            activeRouteR5:
+              data.activeRouteR5 !== undefined
+                ? data.activeRouteR5
+                : (prev.activeRouteR5 ?? null),
+            activeRoutePulls:
+              data.activeRoutePulls !== undefined
+                ? data.activeRoutePulls
+                : (prev.activeRoutePulls ?? null),
             activePullIndex: data.activePullIndex ?? prev.activePullIndex,
             plannedEternalLevel:
               data.plannedEternalLevel ?? prev.plannedEternalLevel,
@@ -565,6 +594,8 @@ export function usePartyRoom(
       let activeDungeonSlug = prev.activeDungeonSlug;
       let activeVariant = prev.activeVariant;
       let activeRouteId = prev.activeRouteId;
+      let activeRouteR5 = prev.activeRouteR5 ?? null;
+      let activeRoutePulls = prev.activeRoutePulls ?? null;
       let plannedEternalLevel = prev.plannedEternalLevel;
       let routeTriggered = false;
       const allRoutes = [...prev.customRoutes, ...BUILT_IN_ROUTES];
@@ -585,6 +616,11 @@ export function usePartyRoom(
           const matched = selectBestRoute(allRoutes, activeDungeonSlug, activeVariant);
           if (matched) {
             activeRouteId = matched.id;
+            activeRouteR5 = matched.r5Code ?? null;
+            activeRoutePulls = matched.pulls ?? null;
+          } else {
+            activeRouteR5 = null;
+            activeRoutePulls = null;
           }
         }
       }
@@ -595,6 +631,8 @@ export function usePartyRoom(
         activeDungeonSlug,
         activeVariant,
         activeRouteId,
+        activeRouteR5,
+        activeRoutePulls,
         plannedEternalLevel,
         liveRun,
       };

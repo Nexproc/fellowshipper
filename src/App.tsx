@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AuthAccountModal } from './components/AuthAccountModal';
 import { BisGearManager } from './components/BisGearManager';
 import { EternalScoreView } from './components/EternalScoreView';
+import type { PlannerSyncPayload } from './components/MethodRouteEmbed';
 import { PartyRosterBar } from './components/PartyRosterBar';
 import { PunchListSplash } from './components/PunchListSplash';
 import { RoutePlannerView } from './components/RoutePlannerView';
@@ -29,7 +30,13 @@ import {
   resolveRoutesForDungeon,
   selectBestRoute,
 } from './domain/punchList';
-import type { BisItemEntry, BossVariant, HeroId, RoutePlan } from './domain/types';
+import type {
+  BisItemEntry,
+  BossVariant,
+  HeroId,
+  PullNode,
+  RoutePlan,
+} from './domain/types';
 import { useFirebaseAuth } from './services/authService';
 import { useCombatLogWatcher } from './services/combatLogWatcher';
 import { usePartyRoom } from './services/partySyncClient';
@@ -191,6 +198,8 @@ export function App() {
         activeDungeonSlug: dungeonSlug,
         activeVariant: chosen?.variant ?? variant,
         activeRouteId: chosen?.id ?? prev.activeRouteId,
+        activeRouteR5: chosen?.r5Code ?? null,
+        activeRoutePulls: chosen?.pulls ?? null,
         activePullIndex: 1,
         plannedEternalLevel: levelOverride ?? prev.plannedEternalLevel,
       };
@@ -405,6 +414,63 @@ export function App() {
       activeDungeonSlug: created.dungeonSlug,
       activeVariant: created.variant,
       activeRouteId: created.id,
+      activeRouteR5: created.r5Code ?? null,
+      activeRoutePulls: created.pulls ?? null,
+      activePullIndex: 1,
+      customRoutes: [created, ...prev.customRoutes],
+    }));
+  };
+
+  const handlePlannerStateChange = (payload: PlannerSyncPayload) => {
+    commitState((prev) => {
+      const currentDungeon =
+        DUNGEONS.find((d) => d.slug === prev.activeDungeonSlug) ?? DUNGEONS[0];
+      if (currentDungeon.levelId !== payload.dungeonId) return prev;
+
+      const mergedRoutes = [...prev.customRoutes, ...BUILT_IN_ROUTES];
+      const currentRoute =
+        mergedRoutes.find((r) => r.id === prev.activeRouteId) ??
+        selectBestRoute(mergedRoutes, currentDungeon.slug, prev.activeVariant);
+
+      const baselineR5 = prev.activeRouteR5 ?? currentRoute?.r5Code ?? '';
+      const hasPullSummary = Boolean(
+        (prev.activeRoutePulls && prev.activeRoutePulls.length > 0) ||
+          (currentRoute?.pulls && currentRoute.pulls.length > 0)
+      );
+
+      if (payload.r5Code === baselineR5 && hasPullSummary) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        activeRouteR5: payload.r5Code,
+        activeRoutePulls: payload.pulls,
+      };
+    });
+  };
+
+  const handleSaveEditedRoute = (payload: {
+    label: string;
+    r5Code: string;
+    pulls: PullNode[];
+    shareUrl: string;
+  }) => {
+    const created: RoutePlan = {
+      id: `custom-${Date.now().toString(36)}`,
+      dungeonSlug: activeDungeon.slug,
+      variant: state.activeVariant,
+      label: payload.label,
+      methodUrl: payload.shareUrl,
+      r5Code: payload.r5Code,
+      pulls: payload.pulls,
+      sourceTag: 'Custom',
+    };
+    commitState((prev) => ({
+      ...prev,
+      activeRouteId: created.id,
+      activeRouteR5: created.r5Code ?? null,
+      activeRoutePulls: created.pulls ?? null,
       customRoutes: [created, ...prev.customRoutes],
     }));
   };
@@ -647,6 +713,8 @@ export function App() {
             punch={punch}
             activeDungeon={activeDungeon}
             activeRoute={activeRoute}
+            activeRouteR5={state.activeRouteR5}
+            activeRoutePulls={state.activeRoutePulls}
             activeVariant={state.activeVariant}
             activePullIndex={state.activePullIndex}
             plannedEternalLevel={state.plannedEternalLevel}
@@ -659,6 +727,8 @@ export function App() {
               commitState((prev) => ({ ...prev, activePullIndex: idx }))
             }
             onPingMap={sendPing}
+            onPlannerStateChange={handlePlannerStateChange}
+            onSaveEditedRoute={handleSaveEditedRoute}
             onOpenFullRoutes={() => setActiveTab('routes')}
           />
         )}
@@ -668,6 +738,8 @@ export function App() {
             activeDungeon={activeDungeon}
             availableRoutes={availableRoutes}
             activeRoute={activeRoute}
+            activeRouteR5={state.activeRouteR5}
+            activeRoutePulls={state.activeRoutePulls}
             activeVariant={state.activeVariant}
             activePullIndex={state.activePullIndex}
             plannedEternalLevel={state.plannedEternalLevel}
@@ -685,6 +757,8 @@ export function App() {
                 ...prev,
                 activeRouteId: routeId,
                 activeVariant: chosen?.variant ?? prev.activeVariant,
+                activeRouteR5: chosen?.r5Code ?? null,
+                activeRoutePulls: chosen?.pulls ?? null,
                 activePullIndex: 1,
               }));
             }}
@@ -701,6 +775,8 @@ export function App() {
               commitState((prev) => ({ ...prev, activePullIndex: idx }))
             }
             onPingMap={sendPing}
+            onPlannerStateChange={handlePlannerStateChange}
+            onSaveEditedRoute={handleSaveEditedRoute}
             onAddCustomRoute={addCustomRoute}
           />
         )}

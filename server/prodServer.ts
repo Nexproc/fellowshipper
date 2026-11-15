@@ -14,6 +14,7 @@ const MIME_BY_EXT: Record<string, string> = {
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.avif': 'image/avif',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };

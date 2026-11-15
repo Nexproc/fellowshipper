@@ -1035,3 +1035,122 @@ a:hover {
   position: relative;
   z-index: 2;
 }
+
+/* Season 2 Interactive Game-Data Planner Embed */
+.s2-planner-frame-wrap {
+  position: relative;
+  width: 100%;
+  height: 640px;
+  background: #0a1017;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.s2-planner-frame-wrap.is-compact {
+  height: 500px;
+}
+
+.s2-planner-frame-wrap.is-tall {
+  height: 78vh;
+  min-height: 620px;
+}
+
+.s2-planner-iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0a1017;
+}
+
+.s2-pool-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.s2-pool-badge.is-s2 {
+  background: var(--jade-soft);
+  color: var(--jade-400);
+  border: 1px solid hsl(161 54% 46% / 0.35);
+}
+
+.s2-pool-badge.is-legacy {
+  background: var(--gold-soft);
+  color: var(--gold-400);
+  border: 1px solid hsl(38 84% 56% / 0.3);
+}
+
+.s2-score-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.74rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.s2-score-pill.is-complete {
+  background: var(--jade-soft);
+  border-color: hsl(161 54% 46% / 0.38);
+  color: var(--jade-400);
+}
+
+.legacy-s1-banner {
+  padding: 8px 14px;
+  background: hsl(38 84% 56% / 0.08);
+  border-bottom: 1px solid hsl(38 84% 56% / 0.25);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.pack-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.pack-tag-chip {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.67rem;
+  background: var(--steel-soft);
+  color: var(--steel-400);
+}
+
+.splash-pull-callout {
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+@media (max-width: 680px) {
+  .s2-planner-frame-wrap {
+    height: 64vh;
+    min-height: 430px;
+  }
+  .s2-planner-frame-wrap.is-compact {
+    height: 58vh;
+    min-height: 410px;
+  }
+  .s2-planner-frame-wrap.is-tall {
+    height: 82vh;
+  }
+}
+

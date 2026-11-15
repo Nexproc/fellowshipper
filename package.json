@@ -10,7 +10,7 @@
     "start": "tsx server/prodServer.ts",
     "tail-logs": "tsx scripts/tail-combat-logs.ts",
     "test": "vitest run",
-    "lint": "oxlint",
+    "lint": "oxlint --ignore-pattern public/planner --ignore-pattern dist",
     "preview": "vite preview",
     "provision:gcp": "bash scripts/provision-gcp.sh"
   },
