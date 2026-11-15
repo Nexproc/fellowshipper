@@ -147,6 +147,12 @@ export function useFirebaseAuth(): AuthController {
         await signInWithRedirect(services.auth, provider);
         return;
       }
+      if (code === 'auth/operation-not-allowed') {
+        setAuthError(
+          'Google Sign-In is not toggled on yet in Firebase Console (Authentication -> Sign-in method -> Google -> Enable).'
+        );
+        return;
+      }
       if (code !== 'auth/popup-closed-by-user') {
         setAuthError(
           (err as Error)?.message ?? 'Google sign-in failed. Check Firebase Auth settings.'

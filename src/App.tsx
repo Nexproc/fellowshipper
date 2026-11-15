@@ -625,8 +625,7 @@ export function App() {
               className="btn btn-primary btn-sm"
               onClick={() => setAuthModalOpen(true)}
             >
-              <KeyRound size={13} />{' '}
-              {auth.isGoogleAuthEnabled ? 'Sign In (Discord / Google)' : 'Sign In with Discord'}
+              <KeyRound size={13} /> Sign In
             </button>
           )}
 
