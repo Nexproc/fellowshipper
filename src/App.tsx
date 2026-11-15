@@ -70,7 +70,6 @@ export function App() {
     state,
     online,
     status,
-    syncBackend,
     syncError,
     clearSyncError,
     setIsWatchingLogs,
@@ -559,9 +558,7 @@ export function App() {
               }}
             />
             <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-              {status === 'connected'
-                ? `${Math.max(1, online.length)} ${syncBackend === 'firebase' ? 'GCP' : 'online'}`
-                : 'PWA'}
+              {status === 'connected' ? `${Math.max(1, online.length)} online` : 'PWA'}
             </span>
           </div>
 
@@ -577,30 +574,19 @@ export function App() {
           </button>
 
           {!auth.isFirebaseConfigured ? (
-            <>
-              <select
-                id="select-my-identity"
-                aria-label="Active Player Profile"
-                className="select-control"
-                value={myMemberId}
-                onChange={(e) => setManualMemberId(e.target.value)}
-              >
-                {state.members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    Profile: {m.displayName}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                id="btn-open-cloud-auth"
-                className="btn btn-sm"
-                onClick={() => setAuthModalOpen(true)}
-                title="Configure GCP Firebase Google & Discord Login"
-              >
-                <KeyRound size={13} /> GCP Auth
-              </button>
-            </>
+            <select
+              id="select-my-identity"
+              aria-label="Active Player Profile"
+              className="select-control"
+              value={myMemberId}
+              onChange={(e) => setManualMemberId(e.target.value)}
+            >
+              {state.members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  Profile: {m.displayName}
+                </option>
+              ))}
+            </select>
           ) : auth.user ? (
             <button
               type="button"

@@ -1,6 +1,5 @@
 import {
   CheckCircle2,
-  Cloud,
   KeyRound,
   Lock,
   LogOut,
@@ -8,14 +7,9 @@ import {
   Unlock,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
 import { evaluateMemberPermissions, type OwnershipContext } from '../domain/ownership';
 import type { MemberProfile } from '../domain/types';
 import type { AuthController } from '../services/authService';
-import {
-  clearRuntimeFirebaseConfigSnippet,
-  saveRuntimeFirebaseConfigSnippet,
-} from '../services/firebaseClient';
 
 interface AuthAccountModalProps {
   open: boolean;
@@ -38,24 +32,13 @@ export function AuthAccountModal({
   onReleaseMember,
   onToggleAllowLeadLoot,
 }: AuthAccountModalProps) {
-  const [configSnippet, setConfigSnippet] = useState('');
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [showPasteBox, setShowPasteBox] = useState(!auth.isFirebaseConfigured);
-
   if (!open) return null;
-
-  const handleSaveConfig = () => {
-    const res = saveRuntimeFirebaseConfigSnippet(configSnippet);
-    if (!res.ok) {
-      setConfigError(res.error ?? 'Invalid Firebase config.');
-    }
-  };
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Party Account and GCP Cloud Settings"
+      aria-label="Party Account and Character Ownership"
       style={{
         position: 'fixed',
         inset: 0,
@@ -73,7 +56,7 @@ export function AuthAccountModal({
         className="panel"
         style={{
           width: '100%',
-          maxWidth: 560,
+          maxWidth: 520,
           maxHeight: '88vh',
           overflowY: 'auto',
           boxShadow: '0 24px 60px rgba(0, 0, 0, 0.55)',
@@ -86,9 +69,7 @@ export function AuthAccountModal({
             <div>
               <h2 className="panel-title">Party Login &amp; Character Ownership</h2>
               <p className="panel-subtitle">
-                {auth.isFirebaseConfigured
-                  ? `Connected to GCP Firebase project: ${auth.projectId}`
-                  : 'Local Preview Mode — connect GCP Firebase to enforce Google & Discord logins'}
+                Sign in to claim your party slot and sync routes &amp; BIS gear
               </p>
             </div>
           </div>
@@ -170,9 +151,11 @@ export function AuthAccountModal({
                         {auth.user.provider}
                       </span>
                     </div>
-                    <div className="mono" style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
-                      {auth.user.email ?? `UID: ${auth.user.uid.slice(0, 12)}…`}
-                    </div>
+                    {auth.user.email && (
+                      <div className="mono" style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+                        {auth.user.email}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -198,8 +181,8 @@ export function AuthAccountModal({
                 }}
               >
                 <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
-                  Sign in with Discord (or Google) to claim your party slot and manage your
-                  characters &amp; BIS gear sets.
+                  Sign in with Discord{auth.isGoogleAuthEnabled ? ' or Google' : ''} to claim your
+                  party slot and manage your characters &amp; BIS gear sets.
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button
@@ -216,14 +199,16 @@ export function AuthAccountModal({
                   >
                     <KeyRound size={14} /> Sign in with Discord
                   </button>
-                  <button
-                    type="button"
-                    id="btn-login-google"
-                    className="btn"
-                    onClick={() => void auth.signInWithGoogle()}
-                  >
-                    <KeyRound size={14} /> Sign in with Google
-                  </button>
+                  {auth.isGoogleAuthEnabled && (
+                    <button
+                      type="button"
+                      id="btn-login-google"
+                      className="btn"
+                      onClick={() => void auth.signInWithGoogle()}
+                    >
+                      <KeyRound size={14} /> Sign in with Google
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -329,74 +314,6 @@ export function AuthAccountModal({
                 );
               })}
             </div>
-          </div>
-
-          {/* Runtime GCP Firebase Config Helper (for instant local connect before CI deploy) */}
-          <div
-            style={{
-              borderTop: '1px solid var(--border-subtle)',
-              paddingTop: 12,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Cloud size={14} />
-                {auth.isRuntimeOverride
-                  ? 'Using browser-saved Firebase config override'
-                  : auth.isFirebaseConfigured
-                    ? 'Configured via VITE_FIREBASE_* environment variables'
-                    : 'Connect a GCP Firebase project right now'}
-              </span>
-              {auth.isRuntimeOverride ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={clearRuntimeFirebaseConfigSnippet}
-                >
-                  Clear Override
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowPasteBox((v) => !v)}
-                >
-                  {showPasteBox ? 'Hide Config' : 'Paste Config'}
-                </button>
-              )}
-            </div>
-
-            {showPasteBox && (
-              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  For production builds on Firebase Hosting, set <code>VITE_FIREBASE_*</code> in{' '}
-                  <code>.env.local</code> or GitHub Actions secrets (see{' '}
-                  <code>FIREBASE_GCP_SETUP.md</code>). To test immediately in this browser, paste
-                  your Web App <code>firebaseConfig</code> object below:
-                </div>
-                <textarea
-                  className="text-input mono"
-                  rows={5}
-                  placeholder={`{\n  apiKey: "AIza...",\n  authDomain: "your-gcp-project.firebaseapp.com",\n  projectId: "your-gcp-project",\n  databaseURL: "https://your-gcp-project-default-rtdb.firebaseio.com",\n  appId: "1:123456:web:abcdef"\n}`}
-                  value={configSnippet}
-                  onChange={(e) => setConfigSnippet(e.target.value)}
-                  style={{ width: '100%', resize: 'vertical', fontSize: '0.75rem' }}
-                />
-                {configError && (
-                  <div style={{ color: '#fca5a5', fontSize: '0.76rem' }}>{configError}</div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    id="btn-save-firebase-config"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleSaveConfig}
-                  >
-                    Connect GCP Firebase
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

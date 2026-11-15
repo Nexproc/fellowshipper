@@ -291,7 +291,7 @@ export function BisGearManager({
               )}
               <span>
                 {perms.canEditBuilds
-                  ? `Signed in as owner of ${member.displayName} — character & BIS edits sync directly to Firestore.`
+                  ? `Signed in as owner of ${member.displayName} — character & BIS edits sync live with your party.`
                   : perms.lockReason}
               </span>
             </div>
@@ -303,7 +303,7 @@ export function BisGearManager({
                   className="btn btn-primary btn-sm"
                   onClick={onOpenAuthModal}
                 >
-                  <KeyRound size={13} /> Sign in (Google / Discord)
+                  <KeyRound size={13} /> Sign In
                 </button>
               )}
               {perms.canClaim && (

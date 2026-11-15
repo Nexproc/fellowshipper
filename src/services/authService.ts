@@ -88,8 +88,6 @@ async function hydrateOidcProfile(
 export interface AuthController {
   isFirebaseConfigured: boolean;
   isGoogleAuthEnabled: boolean;
-  isRuntimeOverride: boolean;
-  projectId: string | null;
   user: AuthUserInfo | null;
   authLoading: boolean;
   authError: string | null;
@@ -112,7 +110,7 @@ export function useFirebaseAuth(): AuthController {
       .catch((err: { code?: string; message?: string }) => {
         const code = err?.code ?? '';
         if (code && code !== 'auth/popup-closed-by-user') {
-          setAuthError(err?.message ?? `Sign-in redirect failed (${code}).`);
+          setAuthError('Sign-in could not complete. Please try again.');
         }
       });
 
@@ -122,8 +120,8 @@ export function useFirebaseAuth(): AuthController {
         setUser(fbUser ? mapFirebaseUser(fbUser) : null);
         setAuthLoading(false);
       },
-      (err) => {
-        setAuthError(err.message);
+      () => {
+        setAuthError('Unable to verify sign-in session. Please try again.');
         setAuthLoading(false);
       }
     );
@@ -148,15 +146,11 @@ export function useFirebaseAuth(): AuthController {
         return;
       }
       if (code === 'auth/operation-not-allowed') {
-        setAuthError(
-          'Google Sign-In is not toggled on yet in Firebase Console (Authentication -> Sign-in method -> Google -> Enable).'
-        );
+        setAuthError('Google sign-in is not enabled for this room. Please sign in with Discord.');
         return;
       }
       if (code !== 'auth/popup-closed-by-user') {
-        setAuthError(
-          (err as Error)?.message ?? 'Google sign-in failed. Check Firebase Auth settings.'
-        );
+        setAuthError('Google sign-in could not complete. Please try again.');
       }
     }
   }, [services]);
@@ -181,9 +175,7 @@ export function useFirebaseAuth(): AuthController {
         return;
       }
       if (code !== 'auth/popup-closed-by-user') {
-        setAuthError(
-          `Discord sign-in failed (${code || 'error'}). Verify OIDC provider "${services.discordProviderId}" is enabled in GCP Identity Platform.`
-        );
+        setAuthError('Discord sign-in could not complete. Please try again.');
       }
     }
   }, [services]);
@@ -199,8 +191,6 @@ export function useFirebaseAuth(): AuthController {
   return {
     isFirebaseConfigured: Boolean(services),
     isGoogleAuthEnabled: services?.isGoogleAuthEnabled ?? true,
-    isRuntimeOverride: services?.isRuntimeOverride ?? false,
-    projectId: services?.projectId ?? null,
     user,
     authLoading,
     authError,
