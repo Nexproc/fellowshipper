@@ -1178,36 +1178,39 @@ a:hover {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   padding: 7px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: max-content repeat(3, max-content);
+  column-gap: 6px;
+  row-gap: 5px;
+  align-items: center;
+  font-size: 0.74rem;
+  line-height: 1.25;
   box-shadow: 0 8px 24px hsl(0 0% 0% / 0.52);
 }
 
 .map-party-hud-row {
-  display: grid;
-  grid-template-columns: minmax(52px, auto) repeat(3, auto);
-  align-items: center;
-  gap: 6px;
-  font-size: 0.74rem;
-  line-height: 1.25;
+  display: contents;
 }
 
 .map-party-hud-name {
   color: var(--text-primary);
   font-weight: 700;
-  padding-right: 4px;
+  padding-right: 6px;
+  white-space: nowrap;
 }
 
 .map-party-hud-slot {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
   align-items: center;
   justify-content: space-between;
-  gap: 5px;
-  padding: 2px 6px;
+  gap: 8px;
+  padding: 2px 7px;
   border-radius: 4px;
   border: 1px solid transparent;
   font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -1218,6 +1221,9 @@ a:hover {
 
 .map-party-hud-slot-val {
   font-weight: 700;
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .map-party-hud-slot.is-ready {

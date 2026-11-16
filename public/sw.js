@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fellowshipper-shell-v11';
+const CACHE_NAME = 'fellowshipper-shell-v12';
 const SHELL_ASSETS = ['./', './index.html', './manifest.webmanifest', './fellowshipper-mark.svg'];
 
 self.addEventListener('install', (event) => {

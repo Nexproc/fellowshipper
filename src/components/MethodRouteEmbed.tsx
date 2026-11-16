@@ -95,7 +95,10 @@ function PartyTelemetryOverlay({
   members?: readonly MemberProfile[];
 }) {
   const playerUnits = useMemo(
-    () => Object.values(liveRun.units).filter((u) => u.isPlayer),
+    () =>
+      Object.values(liveRun.units)
+        .filter((u) => u.isPlayer)
+        .sort((a, b) => a.unitId.localeCompare(b.unitId)),
     [liveRun.units]
   );
 
