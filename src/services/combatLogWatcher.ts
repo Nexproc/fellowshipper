@@ -29,6 +29,37 @@ export interface LogWatcherController {
   importLogFile: (file: File) => Promise<void>;
 }
 
+const STRUCTURAL_LOG_EVENT_RE =
+  /\|(ZONE_CHANGE|DUNGEON_START|DUNGEON_END|COMBATANT_INFO|ENCOUNTER_START|ENCOUNTER_END|UNIT_DEATH|ALLY_DEATH|ABILITY_ACTIVATED|ABILITY_CAST_START)\|/;
+
+function compactReplayChunk(rawText: string, dropPartialFirstLine: boolean): string[] {
+  const split = rawText.split(/\r?\n/);
+  if (dropPartialFirstLine && split.length > 1) {
+    split.shift();
+  }
+  const nonEmpty = split.filter((l) => l.trim().length > 0);
+  if (nonEmpty.length === 0) return [];
+
+  let startIdx = 0;
+  for (let i = nonEmpty.length - 1; i >= 0; i--) {
+    if (nonEmpty[i].includes('|DUNGEON_START|')) {
+      startIdx = i;
+      // Include preceding ZONE_CHANGE if immediately before DUNGEON_START
+      if (i > 0 && nonEmpty[i - 1].includes('|ZONE_CHANGE|')) {
+        startIdx = i - 1;
+      }
+      break;
+    }
+  }
+
+  const scoped = nonEmpty.slice(startIdx);
+  if (scoped.length <= 500) return scoped;
+
+  const head = scoped.slice(0, -240).filter((line) => STRUCTURAL_LOG_EVENT_RE.test(line));
+  const tail = scoped.slice(-240);
+  return [...head, ...tail];
+}
+
 export function useCombatLogWatcher(
   onLines: (lines: string[]) => void,
   onWatchingChange: (watching: boolean) => void
@@ -88,9 +119,18 @@ export function useCombatLogWatcher(
     if (newestFile.name !== trackedNameRef.current) {
       trackedNameRef.current = newestFile.name;
       setActiveLogFileName(newestFile.name);
-      // When attaching to an existing huge log, tail from the last 64KB so we catch ZONE_CHANGE/DUNGEON_START
-      byteOffsetRef.current = Math.max(0, newestFile.size - 64 * 1024);
+      // Scan up to 6MB back on initial attach so DUNGEON_START, COMBATANT_INFO (2 relics + gem modifiers),
+      // and 5-6m Relic cooldown casts earlier in the run are always captured.
+      const initialStart = Math.max(0, newestFile.size - 6 * 1024 * 1024);
+      const initialText = await newestFile.slice(initialStart, newestFile.size).text();
+      byteOffsetRef.current = newestFile.size;
       carryLineRef.current = '';
+      const initialLines = compactReplayChunk(initialText, initialStart > 0);
+      if (initialLines.length > 0) {
+        setLinesProcessed((c) => c + initialLines.length);
+        onLines(initialLines);
+      }
+      return;
     }
 
     if (newestFile.size <= byteOffsetRef.current) return;
@@ -174,12 +214,9 @@ export function useCombatLogWatcher(
     async (file: File) => {
       setErrorMessage(null);
       setActiveLogFileName(file.name);
-      const text = await file.text();
-      // Read last 600 lines so large multi-hour logs replay cleanly without freezing
-      const lines = text
-        .split(/\r?\n/)
-        .filter((l) => l.trim().length > 0)
-        .slice(-600);
+      const start = Math.max(0, file.size - 6 * 1024 * 1024);
+      const text = await file.slice(start, file.size).text();
+      const lines = compactReplayChunk(text, start > 0);
       setLinesProcessed((c) => c + lines.length);
       onLines(lines);
     },

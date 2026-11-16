@@ -15,13 +15,15 @@ import {
   ZoomIn,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { matchRelicAbility } from '../domain/combatLogParser';
+import {
+  computeUnitAbilityHud,
+  type HudAbilitySlot,
+} from '../domain/combatLogParser';
 import { resolveMethodRouteUrl } from '../domain/punchList';
 import type {
   BossVariant,
   DungeonDefinition,
   LiveRunState,
-  LiveUnitTelemetry,
   MapPing,
   MemberProfile,
   PullNode,
@@ -69,37 +71,20 @@ interface MethodRouteEmbedProps {
 
 const ZOOM_STEPS = [1, 1.75, 2.5] as const;
 
-function formatCooldownClock(totalSeconds: number): string {
-  const clamped = Math.max(0, Math.round(totalSeconds));
-  const mins = Math.floor(clamped / 60);
-  const secs = clamped % 60;
-  return `${mins}:${String(secs).padStart(2, '0')}`;
-}
-
-function resolveMemberEquippedRelicLabel(
-  unitName: string,
-  members: readonly MemberProfile[] | undefined
-): string | null {
-  if (!members || members.length === 0) return null;
-  const normalized = unitName.trim().toLowerCase();
-  const member = members.find(
-    (m) => m.displayName.trim().toLowerCase() === normalized
+function HudSlotBadge({ slot }: { slot: HudAbilitySlot }) {
+  const stateClass = slot.isPassive
+    ? 'is-passive'
+    : slot.isReady
+      ? 'is-ready'
+      : slot.remainingSec !== null
+        ? 'is-cd'
+        : 'is-passive';
+  return (
+    <span className={`mono map-party-hud-slot ${stateClass}`}>
+      <span className="map-party-hud-slot-label">{slot.label}</span>
+      <strong className="map-party-hud-slot-val">{slot.statusText}</strong>
+    </span>
   );
-  if (!member) return null;
-  const activeChar =
-    member.characters.find((c) => c.id === member.activeCharacterId) ??
-    member.characters[0];
-  const activeSet =
-    activeChar?.bisSets.find((s) => s.id === activeChar.activeBisSetId) ??
-    activeChar?.bisSets[0];
-  if (!activeSet) return null;
-  for (const item of activeSet.items) {
-    if (item.slot === 'Relic 1' || item.slot === 'Relic 2') {
-      const matched = matchRelicAbility(item.itemName);
-      if (matched) return matched.label;
-    }
-  }
-  return null;
 }
 
 function PartyTelemetryOverlay({
@@ -115,55 +100,29 @@ function PartyTelemetryOverlay({
   );
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const isLiveInDungeon = liveRun.status === 'in_dungeon';
 
   useEffect(() => {
-    if (playerUnits.length === 0 || liveRun.status !== 'in_dungeon') return;
+    if (playerUnits.length === 0 || !isLiveInDungeon) return;
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [playerUnits.length, liveRun.status]);
+  }, [playerUnits.length, isLiveInDungeon]);
 
   if (playerUnits.length === 0) return null;
 
-  const renderRelicStatus = (u: LiveUnitTelemetry) => {
-    const label =
-      u.relicName ?? resolveMemberEquippedRelicLabel(u.name, members) ?? 'Relic';
-    if (u.relicCooldownSec == null) {
-      return { text: `${label} RDY`, onCooldown: false };
-    }
-    const liveDecrement =
-      liveRun.status === 'in_dungeon' && u.relicUpdatedAtMs != null
-        ? Math.max(0, Math.floor((nowMs - u.relicUpdatedAtMs) / 1000))
-        : 0;
-    const remaining = Math.max(0, u.relicCooldownSec - liveDecrement);
-    if (remaining <= 0) {
-      return { text: `${label} RDY`, onCooldown: false };
-    }
-    return { text: `${label} ${formatCooldownClock(remaining)}`, onCooldown: true };
-  };
-
   return (
-    <div className="map-party-hud" aria-label="Party Spirit and Relic Cooldowns">
+    <div
+      className="map-party-hud"
+      aria-label="Party Ultimate and Dual Relic Cooldowns"
+    >
       {playerUnits.map((u) => {
-        const spiritRounded =
-          u.spiritPct !== null ? Math.round(u.spiritPct) : null;
-        const relic = renderRelicStatus(u);
+        const hud = computeUnitAbilityHud(u, members, nowMs, isLiveInDungeon);
         return (
           <div key={u.unitId} className="map-party-hud-row">
-            <strong className="map-party-hud-name">{u.name}</strong>
-            <span
-              className={`mono map-party-hud-spirit ${
-                spiritRounded !== null && spiritRounded >= 100 ? 'is-full' : ''
-              }`}
-            >
-              Spirit {spiritRounded !== null ? `${spiritRounded}%` : '—'}
-            </span>
-            <span
-              className={`mono map-party-hud-relic ${
-                relic.onCooldown ? 'is-cd' : 'is-ready'
-              }`}
-            >
-              {relic.text}
-            </span>
+            <strong className="map-party-hud-name">{hud.name}</strong>
+            <HudSlotBadge slot={hud.ult} />
+            <HudSlotBadge slot={hud.relics[0]} />
+            <HudSlotBadge slot={hud.relics[1]} />
           </div>
         );
       })}

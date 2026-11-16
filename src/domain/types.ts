@@ -182,22 +182,44 @@ export interface EternalChecklistRow {
   notes?: string;
 }
 
+export interface LiveRelicTelemetry {
+  id: string;
+  label: string;
+  baseCooldownSec: number;
+  cooldownTotalSec: number;
+  cooldownSec: number;
+  castLogMs: number | null;
+  updatedAtMs: number | null;
+}
+
 export interface LiveUnitTelemetry {
   unitId: string;
   name: string;
   isPlayer: boolean;
   role?: RoleType;
+  classId?: number | null;
   x: number;
   y: number;
   facing: number;
   hpCurrent: number;
   hpMax: number;
   spiritPct: number | null;
-  relicName?: string | null;
-  relicCastLogMs?: number | null;
-  relicCooldownTotalSec?: number | null;
-  relicCooldownSec?: number | null;
-  relicUpdatedAtMs?: number | null;
+  /** Current Spirit Points toward Ultimate (0..100/110/130) */
+  spiritCurrent?: number | null;
+  /** Maximum Spirit Points cap (100 base, 110/130 with Sapphire Ancestral Surge) */
+  spiritMax?: number | null;
+  /** Effective Spirit Points needed to cast Ultimate (100 base, 95 with -5% Prophet I, 85 with -15% Prophet II) */
+  spiritCost?: number | null;
+  /** Passive Spirit regeneration per second from COMBATANT_INFO Spirit stat */
+  spiritRegenPerSec?: number | null;
+  /** Rolling total combat Spirit gain rate (passive + Rising Spirit/abilities) in Spirit/sec */
+  spiritGainRatePerSec?: number | null;
+  spiritLogMs?: number | null;
+  spiritUpdatedAtMs?: number | null;
+  /** Diamond gem Relic cooldown multiplier (1.0 base, 0.92 for -8%, 0.76 for -24%) */
+  relicCooldownMultiplier?: number | null;
+  /** Equipped Relics (up to 2 slots) with independent live cooldown state */
+  relics?: LiveRelicTelemetry[];
   lastSeenIso: string;
   trail: Array<{ x: number; y: number }>;
 }

@@ -7,6 +7,7 @@ import {
   INITIAL_MEMBERS,
 } from '../catalog';
 import {
+  computeUnitAbilityHud,
   parseCombatLogLine,
   projectUnitsToTacticalMap,
   reduceCombatEvent,
@@ -108,12 +109,94 @@ describe('Fellowship CombatLog Stream Parser & Auto-Route Reducer', () => {
       'Nick',
       'Ting',
     ]);
-    expect(state.units['Player-1003']?.relicName).toBe('Invis');
-    expect(state.units['Player-1003']?.relicCooldownSec).toBe(236);
-    expect(state.units['Player-1001']?.relicName).toBe('Sinbind');
-    expect(state.units['Player-1001']?.relicCooldownSec).toBe(117);
-    expect(state.units['Player-1004']?.relicName).toBe('Wardstone');
-    expect(state.units['Player-1004']?.relicCooldownSec).toBe(114);
+
+    const nowMs = Date.now();
+    // Ting: Diamond >= 1500 (-24% Relic CDR -> 360 * 0.76 = 274s, 124.12s elapsed = 150s), Portal RDY, 100/100 Spirit -> Ult RDY
+    const tingHud = computeUnitAbilityHud(
+      state.units['Player-1003']!,
+      INITIAL_MEMBERS,
+      nowMs,
+      false
+    );
+    expect(tingHud.ult.isReady).toBe(true);
+    expect(tingHud.ult.statusText).toBe('RDY');
+    expect(tingHud.relics[0]).toMatchObject({
+      label: 'Invis',
+      isReady: false,
+      remainingSec: 150,
+      statusText: '2:30',
+    });
+    expect(tingHud.relics[1]).toMatchObject({
+      label: 'Portal',
+      isReady: true,
+      statusText: 'RDY',
+    });
+
+    // Andy: Sapphire 1560 (-15% Prophet II -> Ult cost 85), at 88 Spirit -> Ult RDY! Wardstone (-8% CDR -> 110s, 5.62s elapsed = 104s) + Brez RDY
+    const andyHud = computeUnitAbilityHud(
+      state.units['Player-1004']!,
+      INITIAL_MEMBERS,
+      nowMs,
+      false
+    );
+    expect(state.units['Player-1004']?.spiritCost).toBe(85);
+    expect(andyHud.ult.isReady).toBe(true);
+    expect(andyHud.ult.statusText).toBe('RDY');
+    expect(andyHud.relics[0]).toMatchObject({
+      label: 'Wardstone',
+      isReady: false,
+      remainingSec: 104,
+      statusText: '1:44',
+    });
+    expect(andyHud.relics[1]).toMatchObject({
+      label: 'Brez',
+      isReady: true,
+      statusText: 'RDY',
+    });
+
+    // Nick: Sapphire 600 (-5% Prophet I -> Ult cost 95), at 72 Spirit -> charging with ETA; Sinbind (-8% CDR -> 166s, 63.12s elapsed = 103s) + Obsidian RDY
+    const nickHud = computeUnitAbilityHud(
+      state.units['Player-1001']!,
+      INITIAL_MEMBERS,
+      nowMs,
+      false
+    );
+    expect(state.units['Player-1001']?.spiritCost).toBe(95);
+    expect(nickHud.ult.isReady).toBe(false);
+    expect(nickHud.ult.remainingSec).toBeGreaterThan(0);
+    expect(nickHud.relics[0]).toMatchObject({
+      label: 'Sinbind',
+      isReady: false,
+      remainingSec: 103,
+      statusText: '1:43',
+    });
+    expect(nickHud.relics[1]).toMatchObject({
+      label: 'Obsidian',
+      isReady: true,
+      statusText: 'RDY',
+    });
+
+    // Duncan: Sapphire 480 (-5% Prophet I -> Ult cost 95), at 90 Spirit -> 5 Spirit left (~0:03); Drums (90s, 8.12s elapsed = 82s) + Chicken RDY
+    const duncanHud = computeUnitAbilityHud(
+      state.units['Player-1002']!,
+      INITIAL_MEMBERS,
+      nowMs,
+      false
+    );
+    expect(duncanHud.ult.isReady).toBe(false);
+    expect(duncanHud.ult.remainingSec).toBeGreaterThanOrEqual(1);
+    expect(duncanHud.ult.remainingSec).toBeLessThanOrEqual(6);
+    expect(duncanHud.relics[0]).toMatchObject({
+      label: 'Drums',
+      isReady: false,
+      remainingSec: 82,
+      statusText: '1:22',
+    });
+    expect(duncanHud.relics[1]).toMatchObject({
+      label: 'Chicken',
+      isReady: true,
+      statusText: 'RDY',
+    });
 
     const drakheim = DUNGEONS.find((d) => d.slug === 'ransack-of-drakheim')!;
     const projected = projectUnitsToTacticalMap(players, drakheim.worldBounds);
@@ -130,6 +213,32 @@ describe('Fellowship CombatLog Stream Parser & Auto-Route Reducer', () => {
       'Krumbug'
     );
     expect(bestRoute?.id).toBe('rod-krumbug');
+  });
+
+  it('falls back to member BIS Relic 1 & Relic 2 and auto-infers -15% Ult cost when COMBATANT_INFO is absent', () => {
+    let state = createIdleLiveRunState();
+    const lines = [
+      '2026-11-15T20:14:14.220-08:00|ABILITY_DAMAGE|Player-1002|"Duncan"|Npc-3126854336-12|"Drakheim Pillager"|126|"Starfall Volley"|0|0|0|-1|0|19400|Magical|CriticalStrike|168900|168900|0|820.0|3950.0|0.85|[(2,81.9,100.00),(4,88.0,100.00)]|490000|640000|0|1650.0|5400.0|3.92|[]',
+      // Duncan spends Spirit Ability from 88 Spirit -> infers 85 cost (-15% Prophet II)
+      '2026-11-15T20:14:16.220-08:00|ABILITY_ACTIVATED|Player-1002|"Duncan"|1584|"Event Horizon"|1|Player-1002|"Duncan"|168900|168900|0|820.0|3950.0|0.85|[(2,81.9,100.00),(4,3.0,100.00)]',
+      '2026-11-15T20:15:00.220-08:00|ABILITY_DAMAGE|Player-1002|"Duncan"|Npc-3126854336-12|"Drakheim Pillager"|126|"Starfall Volley"|0|0|0|-1|0|19400|Magical|CriticalStrike|168900|168900|0|820.0|3950.0|0.85|[(2,81.9,100.00),(4,86.0,100.00)]|490000|640000|0|1650.0|5400.0|3.92|[]',
+    ];
+    for (const line of lines) {
+      const parsed = parseCombatLogLine(line);
+      if (parsed) state = reduceCombatEvent(state, parsed).nextRun;
+    }
+
+    const hud = computeUnitAbilityHud(
+      state.units['Player-1002']!,
+      INITIAL_MEMBERS,
+      Date.now(),
+      false
+    );
+    expect(state.units['Player-1002']?.spiritCost).toBe(85);
+    expect(hud.ult.isReady).toBe(true);
+    // Falls back to Duncan's BIS Relic 1 (Sinbinding Stone) & Relic 2 (Ancient Poultry Fetish)
+    expect(hud.relics[0]).toMatchObject({ label: 'Sinbind', isReady: true });
+    expect(hud.relics[1]).toMatchObject({ label: 'Chicken', isReady: true });
   });
 
   it('resets live run back to idle when ZONE_CHANGE returns to The Stronghold (zone 17)', () => {

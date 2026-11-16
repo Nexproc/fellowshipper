@@ -1063,6 +1063,24 @@ export const FELLOWSHIP_ITEM_DATABASE: readonly CatalogItemEntry[] = [
     stats: 'Critical Strike +220, Expertise +180',
     effectSummary: 'Cloaks the entire 4-player party in invisibility for 15 seconds (6m CD).',
   },
+  {
+    id: 'rel-bloodrite-drums',
+    name: 'Bloodrite Drums',
+    slot: 'Relic',
+    category: 'Relic',
+    dungeonSlug: 'urrak-markets',
+    stats: 'Haste +260, Expertise +140',
+    effectSummary: 'Rallies nearby allies with war drums on a 90-second cooldown.',
+  },
+  {
+    id: 'rel-shard-of-antimatter',
+    name: 'Shard of Antimatter',
+    slot: 'Relic',
+    category: 'Relic',
+    dungeonSlug: 'scryers-peak',
+    stats: 'Expertise +240, Critical Strike +160',
+    effectSummary: 'Disrupts enemy spellcasting with an antimatter shock on a 90-second cooldown.',
+  },
 
   // ============================================================================
   // DUNGEON DROPS BY DUNGEON (Season 2 Active Pool + Legacy S1 Dungeons)
