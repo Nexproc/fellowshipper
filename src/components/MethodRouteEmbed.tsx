@@ -15,12 +15,15 @@ import {
   ZoomIn,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { matchRelicAbility } from '../domain/combatLogParser';
 import { resolveMethodRouteUrl } from '../domain/punchList';
 import type {
   BossVariant,
   DungeonDefinition,
   LiveRunState,
+  LiveUnitTelemetry,
   MapPing,
+  MemberProfile,
   PullNode,
   RoutePlan,
 } from '../domain/types';
@@ -48,8 +51,11 @@ interface MethodRouteEmbedProps {
   activePullIndex: number;
   focusRequestTick?: number;
   liveRun: LiveRunState;
+  members?: readonly MemberProfile[];
   pings: readonly MapPing[];
   compact?: boolean;
+  isMaximized?: boolean;
+  onToggleMaximized?: () => void;
   onSelectPull: (index: number) => void;
   onPingMap: (x: number, y: number, label: string) => void;
   onPlannerStateChange?: (payload: PlannerSyncPayload) => void;
@@ -62,6 +68,108 @@ interface MethodRouteEmbedProps {
 }
 
 const ZOOM_STEPS = [1, 1.75, 2.5] as const;
+
+function formatCooldownClock(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.round(totalSeconds));
+  const mins = Math.floor(clamped / 60);
+  const secs = clamped % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function resolveMemberEquippedRelicLabel(
+  unitName: string,
+  members: readonly MemberProfile[] | undefined
+): string | null {
+  if (!members || members.length === 0) return null;
+  const normalized = unitName.trim().toLowerCase();
+  const member = members.find(
+    (m) => m.displayName.trim().toLowerCase() === normalized
+  );
+  if (!member) return null;
+  const activeChar =
+    member.characters.find((c) => c.id === member.activeCharacterId) ??
+    member.characters[0];
+  const activeSet =
+    activeChar?.bisSets.find((s) => s.id === activeChar.activeBisSetId) ??
+    activeChar?.bisSets[0];
+  if (!activeSet) return null;
+  for (const item of activeSet.items) {
+    if (item.slot === 'Relic 1' || item.slot === 'Relic 2') {
+      const matched = matchRelicAbility(item.itemName);
+      if (matched) return matched.label;
+    }
+  }
+  return null;
+}
+
+function PartyTelemetryOverlay({
+  liveRun,
+  members,
+}: {
+  liveRun: LiveRunState;
+  members?: readonly MemberProfile[];
+}) {
+  const playerUnits = useMemo(
+    () => Object.values(liveRun.units).filter((u) => u.isPlayer),
+    [liveRun.units]
+  );
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (playerUnits.length === 0 || liveRun.status !== 'in_dungeon') return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [playerUnits.length, liveRun.status]);
+
+  if (playerUnits.length === 0) return null;
+
+  const renderRelicStatus = (u: LiveUnitTelemetry) => {
+    const label =
+      u.relicName ?? resolveMemberEquippedRelicLabel(u.name, members) ?? 'Relic';
+    if (u.relicCooldownSec == null) {
+      return { text: `${label} RDY`, onCooldown: false };
+    }
+    const liveDecrement =
+      liveRun.status === 'in_dungeon' && u.relicUpdatedAtMs != null
+        ? Math.max(0, Math.floor((nowMs - u.relicUpdatedAtMs) / 1000))
+        : 0;
+    const remaining = Math.max(0, u.relicCooldownSec - liveDecrement);
+    if (remaining <= 0) {
+      return { text: `${label} RDY`, onCooldown: false };
+    }
+    return { text: `${label} ${formatCooldownClock(remaining)}`, onCooldown: true };
+  };
+
+  return (
+    <div className="map-party-hud" aria-label="Party Spirit and Relic Cooldowns">
+      {playerUnits.map((u) => {
+        const spiritRounded =
+          u.spiritPct !== null ? Math.round(u.spiritPct) : null;
+        const relic = renderRelicStatus(u);
+        return (
+          <div key={u.unitId} className="map-party-hud-row">
+            <strong className="map-party-hud-name">{u.name}</strong>
+            <span
+              className={`mono map-party-hud-spirit ${
+                spiritRounded !== null && spiritRounded >= 100 ? 'is-full' : ''
+              }`}
+            >
+              Spirit {spiritRounded !== null ? `${spiritRounded}%` : '—'}
+            </span>
+            <span
+              className={`mono map-party-hud-relic ${
+                relic.onCooldown ? 'is-cd' : 'is-ready'
+              }`}
+            >
+              {relic.text}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function buildPlannerShareHash(r5Code: string | null | undefined): string {
   if (!r5Code) return '';
@@ -81,7 +189,7 @@ function buildPlannerUrl(
     params.set('embed', '1');
     params.set('clean', '1');
   }
-  params.set('v', 'fp3');
+  params.set('v', 'fp4');
   params.set('dungeon', levelId);
   const hash = buildPlannerShareHash(r5Code);
   return `${normalizedBase}planner/index.html?${params.toString()}${hash}`;
@@ -97,8 +205,11 @@ interface Season2PlannerFrameProps {
   activePullIndex: number;
   focusRequestTick: number;
   liveRun: LiveRunState;
+  members?: readonly MemberProfile[];
   pings: readonly MapPing[];
   compact: boolean;
+  isMaximized?: boolean;
+  onToggleMaximized?: () => void;
   onSelectPull: (index: number) => void;
   onPlannerStateChange?: (payload: PlannerSyncPayload) => void;
   onSaveEditedRoute?: (payload: {
@@ -119,8 +230,11 @@ function Season2PlannerFrame({
   activePullIndex,
   focusRequestTick,
   liveRun,
+  members,
   pings,
   compact,
+  isMaximized = false,
+  onToggleMaximized,
   onSelectPull,
   onPlannerStateChange,
   onSaveEditedRoute,
@@ -514,12 +628,28 @@ function Season2PlannerFrame({
           {!compact && (
             <button
               type="button"
-              className="btn btn-sm"
-              onClick={() => setIsTall((prev) => !prev)}
-              title={isTall ? 'Standard map height' : 'Expand map height'}
+              className={`btn btn-sm ${
+                (onToggleMaximized ? isMaximized : isTall) ? 'btn-live' : ''
+              }`}
+              onClick={() => {
+                if (onToggleMaximized) {
+                  onToggleMaximized();
+                } else {
+                  setIsTall((prev) => !prev);
+                }
+              }}
+              title={
+                (onToggleMaximized ? isMaximized : isTall)
+                  ? 'Exit full-viewport map'
+                  : 'Expand map to fill full browser viewport'
+              }
             >
-              {isTall ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-              {isTall ? 'Compact' : 'Tall'}
+              {(onToggleMaximized ? isMaximized : isTall) ? (
+                <Minimize2 size={13} />
+              ) : (
+                <Maximize2 size={13} />
+              )}
+              {(onToggleMaximized ? isMaximized : isTall) ? 'Exit Full' : 'Full Screen'}
             </button>
           )}
           <a
@@ -527,7 +657,7 @@ function Season2PlannerFrame({
             target="_blank"
             rel="noreferrer"
             className="btn btn-sm"
-            title="Open full-screen Season 2 Route Planner in a new tab"
+            title="Open standalone Season 2 Route Planner in a new tab"
           >
             <ExternalLink size={12} />
           </a>
@@ -537,7 +667,7 @@ function Season2PlannerFrame({
       <div
         className={`s2-planner-frame-wrap ${compact ? 'is-compact' : ''} ${
           isTall ? 'is-tall' : ''
-        }`}
+        } ${isMaximized ? 'is-maximized' : ''}`}
       >
         <iframe
           ref={iframeRef}
@@ -546,6 +676,7 @@ function Season2PlannerFrame({
           className="s2-planner-iframe"
           loading="eager"
         />
+        <PartyTelemetryOverlay liveRun={liveRun} members={members} />
       </div>
     </div>
   );
@@ -560,8 +691,11 @@ export function MethodRouteEmbed({
   activePullIndex,
   focusRequestTick = 0,
   liveRun,
+  members,
   pings,
   compact = false,
+  isMaximized = false,
+  onToggleMaximized,
   onSelectPull,
   onPingMap,
   onPlannerStateChange,
@@ -587,8 +721,11 @@ export function MethodRouteEmbed({
         activePullIndex={activePullIndex}
         focusRequestTick={focusRequestTick}
         liveRun={liveRun}
+        members={members}
         pings={pings}
         compact={compact}
+        isMaximized={isMaximized}
+        onToggleMaximized={onToggleMaximized}
         onSelectPull={onSelectPull}
         onPlannerStateChange={onPlannerStateChange}
         onSaveEditedRoute={onSaveEditedRoute}
@@ -658,25 +795,42 @@ export function MethodRouteEmbed({
           <button
             type="button"
             className="btn btn-sm"
-            onClick={() => setIsTall((prev) => !prev)}
-            title={isTall ? 'Standard map height' : 'Expand map height'}
+            onClick={() => {
+              if (onToggleMaximized) {
+                onToggleMaximized();
+              } else {
+                setIsTall((prev) => !prev);
+              }
+            }}
+            title={
+              (onToggleMaximized ? isMaximized : isTall)
+                ? 'Standard map height'
+                : 'Expand map height'
+            }
           >
-            {isTall ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            {isTall ? 'Compact' : 'Tall'}
+            {(onToggleMaximized ? isMaximized : isTall) ? (
+              <Minimize2 size={13} />
+            ) : (
+              <Maximize2 size={13} />
+            )}
+            {(onToggleMaximized ? isMaximized : isTall) ? 'Exit Full' : 'Full Screen'}
           </button>
         </div>
       </div>
 
-      <TacticalRouteMap
-        dungeon={dungeon}
-        variant={variant}
-        liveRun={liveRun}
-        pings={pings}
-        layerMode={layerMode}
-        zoom={zoom}
-        tall={isTall}
-        onPingMap={onPingMap}
-      />
+      <div style={{ position: 'relative' }}>
+        <TacticalRouteMap
+          dungeon={dungeon}
+          variant={variant}
+          liveRun={liveRun}
+          pings={pings}
+          layerMode={layerMode}
+          zoom={zoom}
+          tall={isTall}
+          onPingMap={onPingMap}
+        />
+        <PartyTelemetryOverlay liveRun={liveRun} members={members} />
+      </div>
 
       <div className="method-route-bar">
         <div className="method-route-meta">

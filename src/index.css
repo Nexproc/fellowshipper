@@ -482,23 +482,53 @@ a:hover {
   align-items: start;
 }
 
-.routes-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(305px, 0.85fr);
-  gap: 16px;
-  align-items: start;
+.app-shell.is-routes-tab {
+  max-width: none;
+  min-height: 100dvh;
+  padding: 6px 8px 8px;
+  gap: 6px;
+}
+
+.app-shell.is-routes-tab .topbar {
+  padding: 7px 14px;
+}
+
+.app-shell.is-routes-tab .brand-subtitle {
+  display: none;
+}
+
+.routes-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.routes-stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.routes-stage.is-maximized {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  border-radius: 0;
+  border: 0;
 }
 
 .routes-unified-header {
-  padding: 11px 14px;
-  gap: 10px;
+  padding: 7px 12px;
+  gap: 8px;
 }
 
 .routes-header-primary,
 .routes-header-secondary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 
@@ -510,17 +540,34 @@ a:hover {
 }
 
 .routes-preset-select {
-  min-width: 190px;
-  max-width: 280px;
+  min-width: 180px;
+  max-width: 265px;
 }
 
 .routes-eternal-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 0.76rem;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.routes-pull-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.routes-pull-counter {
+  min-width: 48px;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--gold-400);
 }
 
 .panel {
@@ -1082,11 +1129,26 @@ a:hover {
 }
 
 /* Season 2 Interactive Game-Data Planner Embed */
+.routes-stage .method-embed-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.routes-stage .method-embed-toolbar {
+  padding: 6px 12px;
+}
+
 .s2-planner-frame-wrap {
   position: relative;
   width: 100%;
   height: 660px;
   background: #0a1017;
+}
+
+.routes-stage .s2-planner-frame-wrap {
+  flex: 1 1 auto;
+  height: calc(100dvh - 154px);
+  min-height: 520px;
 }
 
 .s2-planner-frame-wrap.is-compact {
@@ -1096,6 +1158,66 @@ a:hover {
 .s2-planner-frame-wrap.is-tall {
   height: 78vh;
   min-height: 620px;
+}
+
+.routes-stage.is-maximized .s2-planner-frame-wrap,
+.s2-planner-frame-wrap.is-maximized {
+  height: calc(100dvh - 82px);
+  min-height: 480px;
+}
+
+/* Party Spirit % + Relic CD Map Overlay */
+.map-party-hud {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 8;
+  pointer-events: none;
+  background: hsl(216 26% 7% / 0.86);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 7px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 8px 24px hsl(0 0% 0% / 0.5);
+}
+
+.map-party-hud-row {
+  display: grid;
+  grid-template-columns: minmax(56px, auto) auto auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.map-party-hud-name {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.map-party-hud-spirit {
+  color: var(--text-secondary);
+}
+
+.map-party-hud-spirit.is-full {
+  color: var(--gold-400);
+  font-weight: 700;
+}
+
+.map-party-hud-relic {
+  text-align: right;
+  font-weight: 600;
+}
+
+.map-party-hud-relic.is-ready {
+  color: var(--jade-400);
+}
+
+.map-party-hud-relic.is-cd {
+  color: var(--gold-400);
 }
 
 .s2-planner-iframe {

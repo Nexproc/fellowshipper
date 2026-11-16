@@ -173,5 +173,3 @@
 .embed-clean.embed-edit-tools .map-controls .modifiers{display:none!important}
 .embed-clean .display-options-button{top:12px;right:12px;opacity:.76;transition:opacity .14s ease}
 .embed-clean .display-options-button:hover{opacity:1}
-.embed-clean:not(.embed-edit-tools) #markers > g:not(:has(.assigned-ring)):not(:has(.boss-ring)):not(.pack-hover){opacity:.28;transition:opacity .12s ease}
-.embed-clean:not(.embed-edit-tools) #status-badges > g{opacity:.72}

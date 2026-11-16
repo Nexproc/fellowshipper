@@ -772,7 +772,7 @@ export function App() {
     state.partyName ?? formatPartyNameFromRoomId(roomId);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${activeTab === 'routes' ? 'is-routes-tab' : ''}`}>
       <header className="topbar">
         <div className="brand-cluster">
           <img
@@ -995,42 +995,44 @@ export function App() {
         </div>
       )}
 
-      <PartyRosterBar
-        roomId={roomId}
-        partyName={displayPartyName}
-        members={state.members}
-        leadMemberId={state.leadMemberId}
-        myMemberId={myMemberId}
-        online={online}
-        ownershipCtx={ownershipCtx}
-        auth={auth}
-        onCreateParty={handleCreateParty}
-        onClaimUnownedParty={handleClaimPartyOwnership}
-        onJoinParty={addMember}
-        onOpenAuthModal={() => setAuthModalOpen(true)}
-        onOpenScoresTab={() => setActiveTab('eternal')}
-        onToggleInParty={(memberId) =>
-          commitState((prev) => ({
-            ...prev,
-            members: prev.members.map((m) =>
-              m.id === memberId ? { ...m, inParty: !m.inParty } : m
-            ),
-          }))
-        }
-        onSelectCharacter={(memberId, characterId) =>
-          commitState((prev) => ({
-            ...prev,
-            members: prev.members.map((m) =>
-              m.id === memberId ? { ...m, activeCharacterId: characterId } : m
-            ),
-          }))
-        }
-        onSetLead={(memberId) =>
-          commitState((prev) => ({ ...prev, leadMemberId: memberId }))
-        }
-      />
+      {activeTab !== 'routes' && (
+        <PartyRosterBar
+          roomId={roomId}
+          partyName={displayPartyName}
+          members={state.members}
+          leadMemberId={state.leadMemberId}
+          myMemberId={myMemberId}
+          online={online}
+          ownershipCtx={ownershipCtx}
+          auth={auth}
+          onCreateParty={handleCreateParty}
+          onClaimUnownedParty={handleClaimPartyOwnership}
+          onJoinParty={addMember}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
+          onOpenScoresTab={() => setActiveTab('eternal')}
+          onToggleInParty={(memberId) =>
+            commitState((prev) => ({
+              ...prev,
+              members: prev.members.map((m) =>
+                m.id === memberId ? { ...m, inParty: !m.inParty } : m
+              ),
+            }))
+          }
+          onSelectCharacter={(memberId, characterId) =>
+            commitState((prev) => ({
+              ...prev,
+              members: prev.members.map((m) =>
+                m.id === memberId ? { ...m, activeCharacterId: characterId } : m
+              ),
+            }))
+          }
+          onSetLead={(memberId) =>
+            commitState((prev) => ({ ...prev, leadMemberId: memberId }))
+          }
+        />
+      )}
 
-      <main>
+      <main className={activeTab === 'routes' ? 'routes-main' : undefined}>
         {activeTab === 'punch-list' && (
           <PunchListSplash
             punch={punch}
@@ -1070,6 +1072,7 @@ export function App() {
             plannedEternalLevel={state.plannedEternalLevel}
             autoFollowLogLead={state.autoFollowLogLead}
             liveRun={state.liveRun}
+            members={state.members}
             pings={state.pings}
             watcher={watcher}
             onSelectDungeon={(slug) => syncDungeonAndVariant(slug)}

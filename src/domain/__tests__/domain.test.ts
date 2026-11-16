@@ -108,6 +108,12 @@ describe('Fellowship CombatLog Stream Parser & Auto-Route Reducer', () => {
       'Nick',
       'Ting',
     ]);
+    expect(state.units['Player-1003']?.relicName).toBe('Invis');
+    expect(state.units['Player-1003']?.relicCooldownSec).toBe(236);
+    expect(state.units['Player-1001']?.relicName).toBe('Sinbind');
+    expect(state.units['Player-1001']?.relicCooldownSec).toBe(117);
+    expect(state.units['Player-1004']?.relicName).toBe('Wardstone');
+    expect(state.units['Player-1004']?.relicCooldownSec).toBe(114);
 
     const drakheim = DUNGEONS.find((d) => d.slug === 'ransack-of-drakheim')!;
     const projected = projectUnitsToTacticalMap(players, drakheim.worldBounds);

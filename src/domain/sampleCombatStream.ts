@@ -30,9 +30,12 @@ export const SAMPLE_DRAKHEIM_COMBAT_LOG: readonly string[] = [
   '2026-11-15T20:20:18.900-08:00|UNIT_DEATH|Npc-28200-21|"Krumbug the Naughty"|Player-1003|"Ting"|994|"Shadow Ambush"|0|64.0',
 
   // Citadel Ascent & Final Boss: Auga Handhafi the Blind
+  '2026-11-15T20:23:10.000-08:00|ABILITY_ACTIVATED|Player-1003|"Ting"|4108|"Orb of Shadows"|1|Player-1003|"Ting"|174200|174200|0|13800.0|38400.0|0.95|[(2,88.0,100.00),(4,88.0,100.00)]',
   '2026-11-15T20:24:10.100-08:00|ABILITY_DAMAGE|Player-1001|"Nick"|Npc-31300-18|"Glacial Bear"|990|"Thunder Slam"|0|0|0|-1|0|24100|Physical|Hit|318000|342000|0|14200.0|39200.0|0.92|[(3,44000.0,55600.0),(4,72.0,100.00)]|120000|920000|0|14500.0|39800.0|4.05|[]',
+  '2026-11-15T20:24:11.000-08:00|ABILITY_ACTIVATED|Player-1001|"Nick"|4102|"Sinbinding Stone"|1|Player-1001|"Nick"|318000|342000|0|14200.0|39200.0|0.92|[(3,44000.0,55600.0),(4,72.0,100.00)]',
   '2026-11-15T20:24:12.500-08:00|UNIT_DEATH|Npc-31300-18|"Glacial Bear"|Player-1002|"Duncan"|126|"Starfall Volley"|0|100.0',
   '2026-11-15T20:25:05.000-08:00|ENCOUNTER_START|22|["Auga Handhafi the Blind"]',
+  '2026-11-15T20:25:08.500-08:00|ABILITY_ACTIVATED|Player-1004|"Andy"|4106|"Ancient Wardstone"|1|Player-1001|"Nick"|161800|161800|0|15400.0|46200.0|1.08|[(1,1380.0,1440.0),(4,88.0,100.00)]',
   '2026-11-15T20:25:12.442-08:00|ABILITY_DAMAGE|Player-1002|"Duncan"|Npc-42467360-18|"Auga Handhafi the Blind"|1312|"Heartseeker Barrage"|0|12678|0|-1|0|61565|Physical|CriticalStrike|168941|168941|4402|15950.0|46800.0|1.22|[(2,94.02,100.00),(4,92.4,100.00)]|940000|9234655|0|16480.0|48200.0|4.35|[]',
   '2026-11-15T20:25:14.120-08:00|ABILITY_DAMAGE|Player-1003|"Ting"|Npc-42467360-18|"Auga Handhafi the Blind"|994|"Executioner\'s Fang"|0|0|0|-1|0|78400|Physical|CriticalStrike|174200|174200|0|16320.0|47950.0|1.30|[(2,88.0,100.00),(4,100.0,100.00)]|0|9234655|0|16480.0|48200.0|4.35|[]',
   '2026-11-15T20:25:14.125-08:00|UNIT_DEATH|Npc-42467360-18|"Auga Handhafi the Blind"|Player-1003|"Ting"|994|"Executioner\'s Fang"|0|1.0',

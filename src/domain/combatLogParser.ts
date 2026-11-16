@@ -9,6 +9,39 @@ import type {
   WorldBounds,
 } from './types.ts';
 
+export interface RelicCastInfo {
+  label: string;
+  cooldownSec: number;
+}
+
+const RELIC_ABILITY_RULES: ReadonlyArray<{
+  pattern: RegExp;
+  label: string;
+  cooldownSec: number;
+}> = [
+  { pattern: /sinbinding/i, label: 'Sinbind', cooldownSec: 180 },
+  { pattern: /poultry fetish|polymorph/i, label: 'Chicken', cooldownSec: 180 },
+  { pattern: /orb of shadows|group invisibility|shroud of shadows/i, label: 'Invis', cooldownSec: 360 },
+  { pattern: /portalstone|\bportal\b/i, label: 'Portal', cooldownSec: 120 },
+  { pattern: /grimoire of resurrection|\bresurrection\b/i, label: 'Brez', cooldownSec: 300 },
+  { pattern: /wardstone/i, label: 'Wardstone', cooldownSec: 120 },
+  { pattern: /al'zerac/i, label: 'Chalice', cooldownSec: 120 },
+  { pattern: /saltwash/i, label: 'Saltwash', cooldownSec: 180 },
+  { pattern: /obsidian sigil/i, label: 'Sigil', cooldownSec: 180 },
+];
+
+export function matchRelicAbility(rawName: string | undefined): RelicCastInfo | null {
+  if (!rawName) return null;
+  const cleaned = rawName.trim().replace(/^\[?"+|"+\]?$/g, '');
+  if (!cleaned) return null;
+  for (const rule of RELIC_ABILITY_RULES) {
+    if (rule.pattern.test(cleaned)) {
+      return { label: rule.label, cooldownSec: rule.cooldownSec };
+    }
+  }
+  return null;
+}
+
 export interface PositionSample {
   unitId: string;
   name: string;
@@ -19,6 +52,7 @@ export interface PositionSample {
   hpCurrent: number;
   hpMax: number;
   spiritPct: number | null;
+  relicCast?: RelicCastInfo | null;
 }
 
 export type ParsedCombatEvent =
@@ -314,6 +348,9 @@ export function parseCombatLogLine(rawLine: string): ParsedCombatEvent | null {
       parts[21],
       parts[22]
     );
+    if (srcSample?.isPlayer) {
+      srcSample.relicCast = matchRelicAbility(parts[7]);
+    }
     const dstSample = buildSample(
       parts[4],
       parts[5],
@@ -349,6 +386,9 @@ export function parseCombatLogLine(rawLine: string): ParsedCombatEvent | null {
       parts[15]
     );
     if (srcSample) {
+      if (srcSample.isPlayer && eventType !== 'ABILITY_CAST_FAIL') {
+        srcSample.relicCast = matchRelicAbility(parts[5]);
+      }
       return { kind: 'COMBAT_TELEMETRY', timestampIso, samples: [srcSample] };
     }
   }
@@ -579,6 +619,30 @@ export function reduceCombatEvent(
 
   // COMBAT_TELEMETRY
   const nextUnits: Record<string, LiveUnitTelemetry> = { ...current.units };
+  const parsedLogMs = Date.parse(event.timestampIso);
+  const validLogMs = Number.isFinite(parsedLogMs) ? parsedLogMs : null;
+  const nowWallMs = Date.now();
+
+  if (validLogMs !== null) {
+    for (const [uid, existing] of Object.entries(nextUnits)) {
+      if (
+        existing.isPlayer &&
+        existing.relicCastLogMs != null &&
+        existing.relicCooldownTotalSec != null
+      ) {
+        const elapsedSec = Math.max(0, (validLogMs - existing.relicCastLogMs) / 1000);
+        nextUnits[uid] = {
+          ...existing,
+          relicCooldownSec: Math.max(
+            0,
+            Math.round(existing.relicCooldownTotalSec - elapsedSec)
+          ),
+          relicUpdatedAtMs: nowWallMs,
+        };
+      }
+    }
+  }
+
   for (const sample of event.samples) {
     // Cap tracked hostile mobs so old trash doesn't clutter radar
     if (!sample.isPlayer && Object.keys(nextUnits).length > 18 && !nextUnits[sample.unitId]) {
@@ -593,6 +657,21 @@ export function reduceCombatEvent(
       ? [...prevTrail.slice(-14), { x: sample.x, y: sample.y }]
       : prevTrail;
 
+    const relicCast = sample.isPlayer ? sample.relicCast : null;
+    const relicName = relicCast ? relicCast.label : (prev?.relicName ?? null);
+    const relicCooldownTotalSec = relicCast
+      ? relicCast.cooldownSec
+      : (prev?.relicCooldownTotalSec ?? null);
+    const relicCastLogMs = relicCast
+      ? validLogMs
+      : (prev?.relicCastLogMs ?? null);
+    const relicCooldownSec = relicCast
+      ? relicCast.cooldownSec
+      : (prev?.relicCooldownSec ?? null);
+    const relicUpdatedAtMs = relicCast
+      ? nowWallMs
+      : (prev?.relicUpdatedAtMs ?? null);
+
     nextUnits[sample.unitId] = {
       unitId: sample.unitId,
       name: sample.name,
@@ -604,6 +683,11 @@ export function reduceCombatEvent(
       hpCurrent: sample.hpCurrent,
       hpMax: sample.hpMax,
       spiritPct: sample.spiritPct ?? prev?.spiritPct ?? null,
+      relicName,
+      relicCastLogMs,
+      relicCooldownTotalSec,
+      relicCooldownSec,
+      relicUpdatedAtMs,
       lastSeenIso: event.timestampIso,
       trail,
     };

@@ -193,6 +193,11 @@ export interface LiveUnitTelemetry {
   hpCurrent: number;
   hpMax: number;
   spiritPct: number | null;
+  relicName?: string | null;
+  relicCastLogMs?: number | null;
+  relicCooldownTotalSec?: number | null;
+  relicCooldownSec?: number | null;
+  relicUpdatedAtMs?: number | null;
   lastSeenIso: string;
   trail: Array<{ x: number; y: number }>;
 }
